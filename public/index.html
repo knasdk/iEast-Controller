@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#11100e">
+    <title>iEast Controller</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="iEast Controller">
+          <span class="brand-mark"><i></i><i></i><i></i><i></i></span>
+          <span>iEast</span>
+        </a>
+        <div class="top-actions">
+          <div class="connection" id="connection">
+            <span class="status-dot"></span>
+            <span id="connectionText">Forbinder...</span>
+          </div>
+          <button class="settings-button" id="openSettings" aria-label="Åbn indstillinger">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <section class="hero">
+        <div class="artwork" id="artwork">
+          <img id="cover" alt="" hidden>
+          <div class="record">
+            <span class="record-ring"></span>
+            <span class="record-label">IE</span>
+          </div>
+        </div>
+
+        <div class="player">
+          <p class="eyebrow" id="source">IEAST STREAMER</p>
+          <h1 id="title">Klar til musik</h1>
+          <p class="artist" id="artist">Vælg en stream eller start afspilning</p>
+
+          <div class="timeline">
+            <input id="seek" type="range" min="0" max="100" value="0" aria-label="Position">
+            <div class="times"><span id="currentTime">0:00</span><span id="duration">0:00</span></div>
+          </div>
+
+          <div class="transport" aria-label="Afspilningsknapper">
+            <button class="icon-button" data-action="prev" aria-label="Forrige nummer">
+              <svg viewBox="0 0 24 24"><path d="M6 5v14M19 6 9 12l10 6V6Z"/></svg>
+            </button>
+            <button class="play-button" id="playButton" data-action="play" aria-label="Afspil">
+              <svg class="play-icon" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></svg>
+              <svg class="pause-icon" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM14 5h4v14h-4z"/></svg>
+            </button>
+            <button class="icon-button" data-action="next" aria-label="Næste nummer">
+              <svg viewBox="0 0 24 24"><path d="M18 5v14M5 6l10 6-10 6V6Z"/></svg>
+            </button>
+          </div>
+
+          <div class="volume-row">
+            <button class="volume-button" id="muteButton" aria-label="Slå lyden fra">
+              <svg class="volume-on" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Zm12.5.2a4 4 0 0 1 0 5.6M19 7a7 7 0 0 1 0 10"/></svg>
+              <svg class="volume-off" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Zm12 1 5 5m0-5-5 5"/></svg>
+            </button>
+            <input id="volume" type="range" min="0" max="100" value="21" aria-label="Lydstyrke">
+            <output id="volumeValue">21</output>
+          </div>
+        </div>
+      </section>
+
+      <section class="library-card">
+        <div class="library-top">
+          <div>
+            <p class="eyebrow"><span id="libraryName">MEDIESERVER</span> · MUSIKBIBLIOTEK</p>
+            <h2 id="libraryTitle">Find din næste sang</h2>
+            <div class="library-tabs" role="tablist" aria-label="Biblioteksvisning">
+              <button class="active" id="searchTab" type="button" role="tab" aria-selected="true">Søg</button>
+              <button id="browseTab" type="button" role="tab" aria-selected="false">Mapper</button>
+              <button id="spotifyTab" type="button" role="tab" aria-selected="false">Spotify</button>
+            </div>
+          </div>
+          <div class="library-controls">
+            <label class="sr-only" for="mediaServer">Medieserver</label>
+            <select id="mediaServer" aria-label="Vælg medieserver"></select>
+            <label class="sr-only" for="spotifyDevice">Spotify Connect-enhed</label>
+            <select id="spotifyDevice" aria-label="Vælg Spotify Connect-enhed" hidden></select>
+            <form id="searchForm" role="search">
+              <label class="sr-only" for="searchQuery">Søg efter musik</label>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+              <input id="searchQuery" type="search" placeholder="Søg efter titel, artist eller album" minlength="2" required>
+              <button type="submit">Søg</button>
+            </form>
+          </div>
+        </div>
+        <div class="spotify-panel" id="spotifyPanel" hidden>
+          <div id="spotifyAccount"></div>
+          <div class="spotify-actions">
+            <a class="spotify-login" id="spotifyLogin" href="/api/spotify/login">Forbind Spotify</a>
+            <button class="spotify-disconnect" id="spotifyDisconnect" type="button" hidden>Afbryd</button>
+          </div>
+        </div>
+        <div class="browse-toolbar" id="browseToolbar" hidden>
+          <button id="browseBack" type="button">← Et niveau op</button>
+          <div class="browse-path" id="browsePath"></div>
+        </div>
+        <div class="results-toolbar">
+          <button class="back-button" id="backToSearch" type="button" hidden>← Tilbage til søgeresultater</button>
+          <div class="search-status" id="searchStatus">Søg blandt musikken på din lokale medieserver.</div>
+        </div>
+        <div class="search-results" id="searchResults"></div>
+        <nav class="pagination" id="pagination" aria-label="Sider" hidden></nav>
+      </section>
+
+      <section class="lower-grid">
+        <article class="radio-card">
+          <div class="radio-heading">
+            <div>
+              <p class="eyebrow">RADIO</p>
+              <h2>Mine stationer</h2>
+              <p>Start en gemt radiostation med ét klik. Stationer administreres under Indstillinger.</p>
+            </div>
+          </div>
+          <div class="radio-list" id="radioList"></div>
+        </article>
+
+        <aside class="device-card">
+          <div class="device-heading">
+            <span class="device-icon"><i></i><i></i><i></i></span>
+            <div><p class="eyebrow">ENHED</p><h2 id="deviceName">iEast</h2></div>
+          </div>
+          <dl>
+            <div><dt>IP-adresse</dt><dd id="deviceIp">–</dd></div>
+            <div><dt>Wi-Fi signal</dt><dd id="signal">–</dd></div>
+            <div><dt>Firmware</dt><dd id="firmware">–</dd></div>
+          </dl>
+        </aside>
+      </section>
+
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </main>
+
+    <dialog class="settings-dialog" id="settingsDialog">
+      <form id="settingsForm">
+        <div class="dialog-heading">
+          <div><p class="eyebrow">KONFIGURATION</p><h2>Indstillinger</h2></div>
+          <button type="button" class="close-button" id="closeSettings" aria-label="Luk">×</button>
+        </div>
+        <label class="field-label" for="settingsDeviceIp">iEast IP-adresse</label>
+        <input class="settings-input" id="settingsDeviceIp" inputmode="decimal" placeholder="Konfigureres i .env" disabled>
+        <small class="settings-help">Styres med <code>IEAST_IP</code> i <code>.env</code>.</small>
+
+        <div class="spotify-client-heading">
+          <label class="field-label" for="spotifyClientId">Spotify Client ID</label>
+          <button type="button" class="info-button" id="openSpotifyHelp" aria-label="Vis vejledning til Spotify Client ID" aria-haspopup="dialog" aria-controls="spotifyHelpDialog">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.5v.5"></path></svg>
+          </button>
+        </div>
+        <input class="settings-input" id="spotifyClientId" placeholder="Konfigureres i .env" disabled>
+        <small class="settings-help">Redirect URI i Spotify Dashboard: <code id="spotifyRedirectUriHelp">Indlæser...</code></small>
+
+        <div class="settings-section-heading">
+          <div><span>Medieservere</span><small>Styres med MEDIA_SERVERS i .env</small></div>
+        </div>
+        <div class="server-settings" id="serverSettings"></div>
+
+        <div class="settings-section-heading">
+          <div><span>Radiostationer</span><small>Direkte MP3- eller AAC-stream og valgfrit logo</small></div>
+          <button type="button" class="text-button" id="addRadio">+ Tilføj</button>
+        </div>
+        <div class="radio-settings" id="radioSettings"></div>
+
+        <div class="dialog-actions">
+          <button type="button" class="secondary-button" id="cancelSettings">Annuller</button>
+          <button type="submit" class="primary-button">Gem indstillinger</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="settings-dialog spotify-help-dialog" id="spotifyHelpDialog" aria-labelledby="spotifyHelpTitle">
+      <div class="spotify-help-content">
+        <div class="dialog-heading">
+          <div><p class="eyebrow">SPOTIFY OPSÆTNING</p><h2 id="spotifyHelpTitle">Sådan får du et Client ID</h2></div>
+          <button type="button" class="close-button" id="closeSpotifyHelp" aria-label="Luk vejledning">×</button>
+        </div>
+
+        <ol class="tutorial-steps">
+          <li>
+            <strong>Åbn Spotify Dashboard</strong>
+            <p>Gå til <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer">developer.spotify.com/dashboard</a>, og log ind med den Spotify-konto, du vil bruge.</p>
+          </li>
+          <li>
+            <strong>Opret en app</strong>
+            <p>Klik på <b>Create app</b>. Giv appen et valgfrit navn, for eksempel <code>iEast Controller</code>, og skriv en kort beskrivelse.</p>
+          </li>
+          <li>
+            <strong>Tilføj Redirect URI</strong>
+            <p>Indsæt adressen herunder præcist som vist. Den følger den adresse, du bruger til at åbne controlleren.</p>
+            <code class="tutorial-code" id="spotifyRedirectUriTutorial">Indlæser...</code>
+            <p class="tutorial-notice" id="spotifyRedirectNotice"></p>
+          </li>
+          <li>
+            <strong>Vælg Web API</strong>
+            <p>Markér <b>Web API</b> under de API'er eller SDK'er, appen skal bruge, acceptér Spotifys vilkår, og opret appen.</p>
+          </li>
+          <li>
+            <strong>Kopiér Client ID</strong>
+            <p>Åbn appens <b>Settings</b> eller <b>Basic Information</b>, kopiér værdien ved <b>Client ID</b>, og indsæt den i feltet bag denne vejledning. Du skal ikke bruge Client Secret.</p>
+          </li>
+          <li>
+            <strong>Gem og forbind</strong>
+            <p>Klik på <b>Gem indstillinger</b>. Gå derefter til Spotify i controlleren, og klik på <b>Forbind Spotify</b>.</p>
+          </li>
+        </ol>
+
+        <div class="dialog-actions">
+          <button type="button" class="primary-button" id="finishSpotifyHelp">Forstået</button>
+        </div>
+      </div>
+    </dialog>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
