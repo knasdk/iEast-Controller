@@ -44,6 +44,108 @@ npm start
 
 No `npm install` step is required because the project only uses built-in Node.js modules.
 
+## KDE Neon App
+
+The project includes a lightweight KDE launcher that runs the server locally and opens it in a dedicated Chromium or Google Chrome app window. This keeps the controller on the private network and uses Spotify's supported loopback callback.
+
+### 1. Install requirements
+
+The KDE Neon computer needs:
+
+- Node.js 18 or newer
+- Chromium or Google Chrome
+- `curl`
+- Network access to the iEast streamer and any configured media servers
+
+Check the installed versions:
+
+```bash
+node --version
+curl --version
+chromium --version
+```
+
+`google-chrome`, `google-chrome-stable`, and `chromium-browser` are also detected automatically if the `chromium` command is unavailable.
+
+### 2. Download and configure the project
+
+Clone the repository and enter it:
+
+```bash
+git clone https://github.com/knasdk/iEast-Controller.git
+cd iEast-Controller
+```
+
+Create the local configuration:
+
+```bash
+cp .env.example .env
+```
+
+At minimum, set the streamer's address in `.env`. Add the Spotify Client ID when Spotify support is needed:
+
+```dotenv
+IEAST_IP=192.168.0.45
+SPOTIFY_CLIENT_ID=your_client_id
+```
+
+The KDE launcher supplies its own local values for `HOST`, `PORT`, `STATE_DIR`, and `SPOTIFY_REDIRECT_URI`, so those values do not need to be changed for desktop use.
+
+### 3. Configure Spotify
+
+Add this exact redirect URI to the Spotify Developer Dashboard:
+
+```text
+http://127.0.0.1:3000/api/spotify/callback
+```
+
+Spotify permits plain HTTP for this address because `127.0.0.1` is a loopback address. The Client ID in `.env` must belong to the same Spotify Developer app.
+
+### 4. Install the KDE launcher
+
+Make the scripts executable if the project was downloaded as an archive:
+
+```bash
+chmod +x scripts/install-kde.sh scripts/launch-kde.sh
+```
+
+Install the launcher for the current Linux user:
+
+```bash
+./scripts/install-kde.sh
+```
+
+Open **iEast Controller** from the KDE application menu. It may be necessary to log out and back in if KDE does not refresh the menu immediately.
+
+The launcher starts a server bound only to `127.0.0.1`, opens a dedicated browser window, and stops the server when the window closes. Runtime data is stored in `~/.local/state/ieast-controller`, and browser data is stored in `~/.config/ieast-controller`.
+
+Port 3000 must be available. If a manually started development server is already using it, stop that terminal with `Ctrl+C` or run:
+
+```bash
+fuser -k 3000/tcp
+```
+
+### Updating
+
+Close the KDE app, update the repository, and reinstall the menu entry if the project path has changed:
+
+```bash
+git pull --ff-only
+./scripts/install-kde.sh
+```
+
+The `.env` file, Spotify tokens, and radio settings are preserved during Git updates.
+
+### Uninstalling
+
+Remove the application menu entry with:
+
+```bash
+./scripts/install-kde.sh --uninstall
+```
+
+This does not delete `.env`, the repository, or the runtime data under `~/.local/state/ieast-controller`.
+
 ## Configuration
 
 The application loads `.env` from the project root. Real environment variables take precedence over values in that file.
