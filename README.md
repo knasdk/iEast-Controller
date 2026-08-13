@@ -65,7 +65,7 @@ curl --version
 chromium --version
 ```
 
-`google-chrome`, `google-chrome-stable`, and `chromium-browser` are also detected automatically if the `chromium` command is unavailable.
+`chromium-browser`, Flatpak Brave, `google-chrome`, and `google-chrome-stable` are also detected automatically. Chromium is preferred, followed by Flatpak Brave; Google Chrome is used as a fallback.
 
 ### 2. Download and configure the project
 

@@ -30,10 +30,13 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const STATE_DIR = path.resolve(process.env.STATE_DIR || path.join(__dirname, ".state"));
 const SETTINGS_FILE = path.join(STATE_DIR, "settings.json");
 const SPOTIFY_FILE = path.join(STATE_DIR, "spotify.json");
+const PLAYBACK_FILE = path.join(STATE_DIR, "playback.json");
 const SPOTIFY_REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI || "";
 const artworkCache = new Map();
 let directPlayback = null;
 let spotifyAuthorization = null;
+let streamerName = "";
+let spotifyPlaybackCache = { expiresAt: 0, value: null };
 
 const defaultRadios = [
   { id: "radio-nova", name: "Nova FM", url: "http://live-bauerdk.sharp-stream.com/nova_dk_mp3", artwork: "https://www.radio.dk/300/novafm.png" },
@@ -96,6 +99,13 @@ if (SPOTIFY_FILE) {
     // Spotify has not been connected yet.
   }
 }
+if (PLAYBACK_FILE) {
+  try {
+    directPlayback = JSON.parse(fs.readFileSync(PLAYBACK_FILE, "utf8"));
+  } catch {
+    // Playback metadata is created after the first local stream starts.
+  }
+}
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -132,6 +142,21 @@ function saveSpotifyTokens(tokens) {
   if (!SPOTIFY_FILE) return;
   fs.writeFileSync(SPOTIFY_FILE, `${JSON.stringify(tokens, null, 2)}\n`, { mode: 0o600 });
   fs.chmodSync(SPOTIFY_FILE, 0o600);
+}
+
+function saveDirectPlayback(playback) {
+  directPlayback = playback;
+  if (!PLAYBACK_FILE) return;
+  if (!playback) {
+    try {
+      fs.unlinkSync(PLAYBACK_FILE);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    return;
+  }
+  fs.writeFileSync(PLAYBACK_FILE, `${JSON.stringify(playback, null, 2)}\n`, { mode: 0o600 });
+  fs.chmodSync(PLAYBACK_FILE, 0o600);
 }
 
 function clearSpotifyTokens() {
@@ -271,6 +296,33 @@ function spotifySearchResults(data) {
   ];
 }
 
+function spotifyPlayerStatus(playback, deviceName) {
+  if (!playback?.item || playback.item.type !== "track" || playback.device?.name !== deviceName) return null;
+  return {
+    status: playback.is_playing ? "play" : "pause",
+    curpos: Number(playback.progress_ms) || 0,
+    totlen: Number(playback.item.duration_ms) || 0,
+    Title: playback.item.name || "",
+    Artist: playback.item.artists?.map((artist) => artist.name).join(", ") || "",
+    Album: playback.item.album?.name || "",
+    artwork: playback.item.album?.images?.[0]?.url || null,
+    spotifyUri: playback.item.uri || null,
+    mediaType: "track",
+  };
+}
+
+async function getSpotifyPlayerStatus(deviceName) {
+  if (!spotifyTokens || !deviceName) return null;
+  if (spotifyPlaybackCache.expiresAt > Date.now()) return spotifyPlaybackCache.value;
+  try {
+    const value = spotifyPlayerStatus(await spotifyFetch("/me/player"), deviceName);
+    spotifyPlaybackCache = { expiresAt: Date.now() + 3000, value };
+    return value;
+  } catch {
+    return null;
+  }
+}
+
 function escapeXml(value) {
   return String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
 }
@@ -293,7 +345,17 @@ function xmlAttribute(attributes, name) {
   return match ? decodeXml(match[1]) : "";
 }
 
-function parseMediaResponse(soap) {
+function mediaArtworkUrl(value, baseUrl) {
+  if (!value) return null;
+  try {
+    const url = new URL(value, baseUrl);
+    return new Set(["http:", "https:"]).has(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseMediaResponse(soap, baseUrl) {
   const didl = decodeXml(xmlValue(soap, "Result"));
   const items = [...didl.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].map((match) => {
     const item = match[1];
@@ -307,7 +369,7 @@ function parseMediaResponse(soap) {
       track: Number(xmlValue(item, "upnp:originalTrackNumber")) || null,
       duration: resource?.[1].match(/duration="([^"]+)"/i)?.[1] || "",
       url: resource ? decodeXml(resource[2].trim()) : "",
-      artwork: xmlValue(item, "upnp:albumArtURI") || null,
+      artwork: mediaArtworkUrl(xmlValue(item, "upnp:albumArtURI"), baseUrl),
     };
   }).filter((item) => item.url && item.mediaClass.startsWith("object.item.audioItem"));
   const containers = [...didl.matchAll(/<container\b([^>]*)>([\s\S]*?)<\/container>/gi)].map((match) => ({
@@ -315,8 +377,30 @@ function parseMediaResponse(soap) {
     id: xmlAttribute(match[1], "id"),
     title: xmlValue(match[2], "dc:title"),
     childCount: Number(xmlAttribute(match[1], "childCount")) || 0,
+    artwork: mediaArtworkUrl(xmlValue(match[2], "upnp:albumArtURI"), baseUrl),
   }));
   return { items, containers, total: Number(xmlValue(soap, "TotalMatches")) || items.length + containers.length };
+}
+
+function currentPlayerStatus(status, playback) {
+  if (!playback) return status;
+  const directMode = new Set(["10", "20", "21"]).has(String(status.mode));
+  if (!directMode) return status;
+  const { startedAt, ...metadata } = playback;
+  return { ...status, ...metadata };
+}
+
+function unknownDirectPlaybackStatus(status, hasPlaybackMetadata) {
+  const directMode = new Set(["10", "20", "21"]).has(String(status.mode));
+  if (!directMode || hasPlaybackMetadata) return status;
+  return {
+    ...status,
+    Title: "Ekstern afspilning",
+    Artist: "Vælg nummeret i controlleren for at vise metadata",
+    Album: "",
+    artwork: null,
+    disableArtwork: true,
+  };
 }
 
 async function queryMediaServer(criteria, server, { start = 0, count = 20, sort = "+dc:title", containerId = "1" } = {}) {
@@ -334,7 +418,7 @@ async function queryMediaServer(criteria, server, { start = 0, count = 20, sort 
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`${server.name} svarede med HTTP ${response.status}`);
-    return parseMediaResponse(await response.text());
+    return parseMediaResponse(await response.text(), server.url);
   } finally {
     clearTimeout(timeout);
   }
@@ -355,7 +439,7 @@ async function browseMediaServer(objectId, server) {
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`${server.name} svarede med HTTP ${response.status}`);
-    return parseMediaResponse(await response.text());
+    return parseMediaResponse(await response.text(), server.url);
   } finally {
     clearTimeout(timeout);
   }
@@ -539,7 +623,7 @@ async function api(request, response, pathname) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(playBody),
     });
-    directPlayback = null;
+    saveDirectPlayback(null);
     return sendJson(response, 200, { playing: true, device: device.name });
   }
 
@@ -554,13 +638,27 @@ async function api(request, response, pathname) {
 
   if (request.method === "GET" && pathname === "/api/status") {
     const status = await deviceCommand("getPlayerStatus");
+    if (!streamerName && spotifyTokens) {
+      try {
+        streamerName = (await deviceCommand("getStatusEx")).DeviceName || "";
+      } catch {
+        // LinkPlay status remains available when extended device details fail.
+      }
+    }
+    const spotifyStatus = await getSpotifyPlayerStatus(streamerName);
+    if (spotifyStatus) {
+      saveDirectPlayback(null);
+      return sendJson(response, 200, { ...status, ...spotifyStatus });
+    }
     const directMode = new Set(["10", "20", "21"]).has(String(status.mode));
-    if (directPlayback && !directMode) directPlayback = null;
-    return sendJson(response, 200, directPlayback && directMode ? { ...status, ...directPlayback } : status);
+    if (directPlayback && !directMode) saveDirectPlayback(null);
+    const current = currentPlayerStatus(unknownDirectPlaybackStatus(status, Boolean(directPlayback)), directPlayback);
+    return sendJson(response, 200, current);
   }
 
   if (request.method === "GET" && pathname === "/api/device") {
     const data = await deviceCommand("getStatusEx");
+    streamerName = data.DeviceName || streamerName;
     return sendJson(response, 200, {
       name: data.DeviceName,
       firmware: data.firmware,
@@ -647,7 +745,9 @@ async function api(request, response, pathname) {
     } else {
       return sendJson(response, 400, { error: "Ugyldig kommando" });
     }
-    return sendJson(response, 200, await deviceCommand(command));
+    const result = await deviceCommand(command);
+    if (body.action === "stop") saveDirectPlayback(null);
+    return sendJson(response, 200, result);
   }
 
   if (request.method === "POST" && pathname === "/api/stream") {
@@ -661,13 +761,15 @@ async function api(request, response, pathname) {
     }
     const result = await deviceCommand(`setPlayerCmd:play:${streamUrl.href}`);
     const metadata = body.metadata;
-    directPlayback = metadata?.title ? {
+    saveDirectPlayback(metadata?.title ? {
       Title: String(metadata.title).slice(0, 300),
       Artist: String(metadata.artist || "").slice(0, 200),
       Album: String(metadata.album || "").slice(0, 300),
       artwork: typeof metadata.artwork === "string" ? metadata.artwork : null,
       disableArtwork: metadata.disableArtwork === true,
-    } : null;
+      mediaType: metadata.mediaType === "radio" ? "radio" : "track",
+      startedAt: Date.now(),
+    } : null);
     return sendJson(response, 200, result);
   }
 
@@ -686,7 +788,10 @@ function serveStatic(response, pathname) {
       response.writeHead(error.code === "ENOENT" ? 404 : 500).end("Not found");
       return;
     }
-    response.writeHead(200, { "Content-Type": contentTypes[path.extname(filePath)] || "application/octet-stream" });
+    response.writeHead(200, {
+      "Content-Type": contentTypes[path.extname(filePath)] || "application/octet-stream",
+      "Cache-Control": "no-cache",
+    });
     response.end(data);
   });
 }
@@ -711,4 +816,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { server };
+module.exports = { currentPlayerStatus, parseMediaResponse, spotifyPlayerStatus, unknownDirectPlaybackStatus, server };

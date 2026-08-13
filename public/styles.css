@@ -43,14 +43,21 @@ button:disabled { cursor: wait; opacity: .55; }
 
 .hero { display: grid; grid-template-columns: minmax(300px, .92fr) minmax(420px, 1.08fr); gap: clamp(48px, 8vw, 110px); align-items: center; padding: clamp(50px, 8vw, 94px) clamp(8px, 4vw, 44px); }
 .player { min-width: 0; }
-.artwork { position: relative; aspect-ratio: 1; border-radius: 18px; display: grid; place-items: center; overflow: hidden; background: linear-gradient(145deg, #dfff61, #a7c72e); box-shadow: 0 28px 70px rgba(0,0,0,.33); }
-.artwork #cover { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .35s ease; }
-.artwork.has-cover #cover { opacity: 1; }
-.record { position: relative; width: 68%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; background: repeating-radial-gradient(circle, #181815 0 3px, #252520 4px 5px, #141412 6px 9px); box-shadow: 0 18px 36px rgba(0,0,0,.4); animation: spin 12s linear infinite; animation-play-state: paused; }
+.artwork { position: relative; aspect-ratio: 1; border: 1px solid rgba(255,255,255,.09); border-radius: 18px; display: grid; place-items: center; overflow: hidden; background: linear-gradient(145deg, #302f2a, #181714 70%); box-shadow: 0 28px 70px rgba(0,0,0,.33), inset 0 1px rgba(255,255,255,.07); }
+.artwork::before { position: absolute; inset: 7%; border: 1px solid rgba(255,255,255,.045); border-radius: 13px; background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.055), transparent 33%); content: ""; }
+.record { position: relative; z-index: 1; width: 72%; aspect-ratio: 1; border: 2px solid #090908; border-radius: 50%; display: grid; place-items: center; background: repeating-radial-gradient(circle, #171715 0 3px, #282824 4px 5px, #10100f 6px 9px); box-shadow: 0 20px 38px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.08); animation: spin 12s linear infinite; animation-play-state: paused; }
 .is-playing .record { animation-play-state: running; }
-.record::before { content: ""; position: absolute; inset: 15%; border: 1px solid rgba(255,255,255,.06); border-radius: 50%; }
-.record-ring { position: absolute; width: 34%; aspect-ratio: 1; border-radius: 50%; background: var(--accent); }
+.record::before { position: absolute; inset: 8%; border: 1px solid rgba(255,255,255,.065); border-radius: 50%; box-shadow: inset 0 0 0 10px rgba(0,0,0,.06); content: ""; }
+.artwork #cover { position: absolute; z-index: 2; width: 56%; aspect-ratio: 1; padding: 2%; border: 4px solid #11110f; border-radius: 50%; background: #171613; object-fit: contain; opacity: 0; transition: opacity .35s ease; }
+.artwork.has-cover #cover { opacity: 1; }
+.record-ring { position: absolute; z-index: 3; width: 8%; aspect-ratio: 1; border: 3px solid rgba(255,255,255,.58); border-radius: 50%; background: #12110f; box-shadow: 0 1px 5px rgba(0,0,0,.7); }
 .record-label { z-index: 1; color: #111; font: 700 clamp(13px, 2vw, 24px) "Manrope"; letter-spacing: -.08em; }
+.artwork.has-cover .record-label { opacity: 0; }
+.tonearm { position: absolute; z-index: 2; top: 13%; right: 10%; width: 34%; height: 60%; filter: drop-shadow(0 4px 5px rgba(0,0,0,.45)); transform: rotate(var(--tonearm-angle, -18deg)); transform-origin: 88% 8%; transition: transform 2s linear; }
+.tonearm svg { width: 100%; height: 100%; overflow: visible; }
+.tonearm path { fill: none; stroke: #aaa59b; stroke-width: 2.6; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.tonearm::before { position: absolute; top: -4%; right: -2%; width: 22%; aspect-ratio: 1; border: 3px solid #aaa49a; border-radius: 50%; background: #24221e; box-shadow: 0 3px 8px rgba(0,0,0,.5); content: ""; }
+.tonearm::after { position: absolute; bottom: 3%; left: 2%; width: 14%; height: 8%; border-radius: 3px 3px 7px 7px; background: #b4aea3; content: ""; transform: rotate(-12deg); }
 @keyframes spin { to { transform: rotate(360deg); } }
 .eyebrow { margin: 0 0 12px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .15em; }
 h1 { margin: 0; font: 700 clamp(38px, 5vw, 64px)/1.03 "Manrope", sans-serif; letter-spacing: -.055em; overflow-wrap: anywhere; text-wrap: balance; }
@@ -82,7 +89,8 @@ input[type="range"]::-moz-range-thumb { width: 9px; height: 9px; border: 3px sol
 .library-top form { flex: 1; display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 9px; padding: 5px 5px 5px 14px; border: 1px solid var(--line); border-radius: 11px; background: #12110f; }
 .library-top form:focus-within { border-color: rgba(229,255,95,.5); }
 .library-top form svg { width: 18px; fill: none; stroke: var(--muted); stroke-width: 1.7; }
-.library-top input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 13px; }
+.library-top input { min-width: 0; border: 0; outline: 0; appearance: none; background: transparent !important; color: var(--text); box-shadow: none !important; font-size: 13px; }
+.library-top input:-webkit-autofill, .library-top input:-webkit-autofill:hover, .library-top input:-webkit-autofill:focus { -webkit-text-fill-color: var(--text); box-shadow: 0 0 0 1000px #12110f inset !important; caret-color: var(--text); }
 .library-top input::placeholder { color: #66635d; }
 .library-top button, .result-play { border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-dark); font-size: 12px; font-weight: 700; cursor: pointer; }
 .library-top button { padding: 10px 17px; }
@@ -94,8 +102,8 @@ input[type="range"]::-moz-range-thumb { width: 9px; height: 9px; border: 3px sol
 .search-status { color: var(--muted); font-size: 12px; }
 .back-button { padding: 0; border: 0; background: none; color: var(--accent); font-size: 11px; font-weight: 700; cursor: pointer; }
 .search-results:not(:empty) { margin-top: 12px; border-top: 1px solid var(--line); }
-.search-result { display: grid; grid-template-columns: 48px minmax(0, 1.3fr) minmax(120px, .8fr) 58px 38px; align-items: center; gap: 15px; padding: 10px 3px; border-bottom: 1px solid var(--line); }
-.browse-folder { width: 100%; display: grid; grid-template-columns: 42px minmax(0, 1fr) 24px; align-items: center; gap: 13px; padding: 11px 3px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); text-align: left; cursor: pointer; }.browse-folder:hover { background: rgba(255,255,255,.025); }.folder-icon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 8px; background: #2a2924; color: var(--accent); }.folder-icon svg { width: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }.folder-details { min-width: 0; }.folder-details strong, .folder-details small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.folder-details strong { font: 600 13px "Manrope"; }.folder-details small { margin-top: 3px; color: var(--muted); font-size: 10px; }.folder-arrow { color: var(--muted); font-size: 15px; }
+.search-result { position: relative; display: grid; grid-template-columns: 48px minmax(0, 1.3fr) minmax(120px, .8fr) 58px 38px; align-items: center; gap: 15px; padding: 10px 3px; border-bottom: 1px solid var(--line); transition: background-color .2s ease, border-color .2s ease; }.search-result.is-current { margin-inline: -9px; padding-inline: 12px; border-color: rgba(229,255,95,.25); border-radius: 9px; background: rgba(229,255,95,.075); }.search-result.is-current::before { position: absolute; top: 8px; bottom: 8px; left: 0; width: 2px; border-radius: 2px; background: var(--accent); content: ""; }.search-result.is-current .result-title strong { color: var(--accent); }.search-result.is-current .result-play { box-shadow: 0 0 0 4px rgba(229,255,95,.13); }
+.browse-folder { width: 100%; display: grid; grid-template-columns: 42px minmax(0, 1fr) 24px; align-items: center; gap: 13px; padding: 11px 3px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); text-align: left; cursor: pointer; }.browse-folder:hover { background: rgba(255,255,255,.025); }.folder-icon { position: relative; width: 38px; height: 38px; display: grid; place-items: center; overflow: hidden; border-radius: 8px; background: #2a2924; color: var(--accent); }.folder-icon svg { width: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }.folder-icon img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }.folder-details { min-width: 0; }.folder-details strong, .folder-details small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.folder-details strong { font: 600 13px "Manrope"; }.folder-details small { margin-top: 3px; color: var(--muted); font-size: 10px; }.folder-arrow { color: var(--muted); font-size: 15px; }
 .result-cover { width: 48px; height: 48px; border-radius: 7px; object-fit: cover; background: #2a2924; }
 .result-title, .result-album { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .result-title strong { display: block; overflow: hidden; text-overflow: ellipsis; font: 600 13px "Manrope"; }

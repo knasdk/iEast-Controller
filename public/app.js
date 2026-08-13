@@ -5,6 +5,7 @@ const state = {
   seeking: false,
   volumeChanging: false,
   artworkKey: "",
+  currentTrack: null,
   config: null,
   search: { query: "", page: 1 },
   folderSearch: { query: "", page: 1 },
@@ -28,6 +29,34 @@ function decodeMetadata(value) {
   const textarea = document.createElement("textarea");
   textarea.innerHTML = decoded;
   return textarea.value;
+}
+
+function trackIdentity(title, artist = "") {
+  const normalize = (value) => String(value || "").normalize("NFKC").trim().toLocaleLowerCase();
+  return `${normalize(String(title || "").replace(/^\d+\.\s+/, ""))}\n${normalize(artist)}`;
+}
+
+function updateTrackHighlights() {
+  document.querySelectorAll(".search-result[data-track]").forEach((row) => {
+    const active = state.playing && row.dataset.track === state.currentTrack;
+    row.classList.toggle("is-current", active);
+    if (active) row.setAttribute("aria-current", "true");
+    else row.removeAttribute("aria-current");
+    const button = row.querySelector(".result-play");
+    if (button) {
+      button.dataset.action = active ? "pause" : "play";
+      button.ariaLabel = active ? "Sæt på pause" : `Afspil ${button.dataset.title}`;
+      button.innerHTML = active
+        ? '<svg viewBox="0 0 24 24"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>'
+        : '<svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></svg>';
+    }
+  });
+}
+
+function setCurrentTrack(title, artist, playing = true) {
+  state.currentTrack = title ? trackIdentity(title, artist) : null;
+  state.playing = playing;
+  updateTrackHighlights();
 }
 
 function setRange(range, value, max = Number(range.max)) {
@@ -104,6 +133,7 @@ function renderStatus(data) {
 
   const title = decodeMetadata(data.Title || data.title) || "Klar til musik";
   const artist = decodeMetadata(data.Artist || data.artist || data.Album) || "Vælg en stream eller start afspilning";
+  setCurrentTrack(title === "Klar til musik" ? "" : title, artist, state.playing);
   $("#title").textContent = title;
   $("#artist").textContent = artist;
   if (data.disableArtwork) resetArtwork();
@@ -112,6 +142,8 @@ function renderStatus(data) {
 
   const duration = Number(data.totlen) || 0;
   const position = Math.min(Number(data.curpos) || 0, duration || Infinity);
+  const tonearmProgress = data.mediaType === "radio" || !duration ? 0 : Math.min(1, position / duration);
+  $("#artwork").style.setProperty("--tonearm-angle", `${-18 + tonearmProgress * 18}deg`);
   if (!state.seeking) {
     $("#seek").max = duration || 1;
     setRange($("#seek"), position, duration || 1);
@@ -234,6 +266,7 @@ async function playRadio(radio, button) {
           artist: "Radio",
           artwork: radio.artwork,
           disableArtwork: !radio.artwork,
+          mediaType: "radio",
         },
       }),
     });
@@ -301,6 +334,7 @@ function renderRadios() {
 function createTrackRow(item) {
     const row = document.createElement("article");
     row.className = "search-result";
+    row.dataset.track = trackIdentity(item.title, item.artist);
 
     const cover = document.createElement("img");
     cover.className = "result-cover";
@@ -328,11 +362,23 @@ function createTrackRow(item) {
 
     const play = document.createElement("button");
     play.className = "result-play";
+    play.dataset.title = item.title;
     play.ariaLabel = `Afspil ${item.title}`;
     play.innerHTML = '<svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></svg>';
     play.addEventListener("click", async () => {
       play.disabled = true;
       try {
+        if (play.dataset.action === "pause") {
+          await request("/api/command", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "pause" }),
+          });
+          state.playing = false;
+          updateTrackHighlights();
+          setTimeout(refreshStatus, 250);
+          return;
+        }
         await request("/api/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -343,9 +389,11 @@ function createTrackRow(item) {
               artist: item.artist,
               album: item.album,
               artwork: item.artwork,
+              mediaType: "track",
             },
           }),
         });
+        setCurrentTrack(item.title, item.artist);
         notify(`Afspiller ${item.title}`);
         setTimeout(refreshStatus, 500);
       } catch (error) {
@@ -360,6 +408,7 @@ function createTrackRow(item) {
 
 function renderSearchResults(items) {
   $("#searchResults").replaceChildren(...items.map(createTrackRow));
+  updateTrackHighlights();
 }
 
 function renderBrowseEntries(containers, items) {
@@ -367,7 +416,17 @@ function renderBrowseEntries(containers, items) {
     const button = document.createElement("button");
     button.className = "browse-folder";
     button.type = "button";
-    button.innerHTML = '<span class="folder-icon"><svg viewBox="0 0 24 24"><path d="M3 7.5h7l2 2h9v9.5H3V7.5Z"/></svg></span>';
+    const icon = document.createElement("span");
+    icon.className = "folder-icon";
+    icon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M3 7.5h7l2 2h9v9.5H3V7.5Z"/></svg>';
+    if (folder.artwork) {
+      const cover = document.createElement("img");
+      cover.src = folder.artwork;
+      cover.alt = "";
+      cover.loading = "lazy";
+      cover.addEventListener("error", () => cover.remove(), { once: true });
+      icon.append(cover);
+    }
     const details = document.createElement("span");
     details.className = "folder-details";
     const title = document.createElement("strong");
@@ -378,11 +437,12 @@ function renderBrowseEntries(containers, items) {
     const arrow = document.createElement("span");
     arrow.className = "folder-arrow";
     arrow.textContent = "→";
-    button.append(details, arrow);
+    button.append(icon, details, arrow);
     button.addEventListener("click", () => browseFolder(folder));
     return button;
   });
   $("#searchResults").replaceChildren(...folders, ...items.map(createTrackRow));
+  updateTrackHighlights();
 }
 
 async function browseFolder(folder, push = true) {
@@ -534,6 +594,7 @@ function renderSpotifyResults(items) {
   $("#searchResults").replaceChildren(...items.map((item) => {
     const row = document.createElement("article");
     row.className = "search-result spotify-result";
+    if (item.type === "track") row.dataset.track = trackIdentity(item.title, item.subtitle);
     const cover = document.createElement("img");
     cover.className = "result-cover";
     if (item.artwork) cover.src = item.artwork;
@@ -556,16 +617,29 @@ function renderSpotifyResults(items) {
     if (item.albumUri) detail.addEventListener("click", () => loadSpotifyAlbum(item.albumUri));
     const play = document.createElement("button");
     play.className = "result-play";
+    play.dataset.title = `${item.title} på Spotify`;
     play.ariaLabel = `Afspil ${item.title} på Spotify`;
     play.innerHTML = '<svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></svg>';
     play.addEventListener("click", async () => {
       play.disabled = true;
       try {
+        if (play.dataset.action === "pause") {
+          await request("/api/command", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "pause" }),
+          });
+          state.playing = false;
+          updateTrackHighlights();
+          setTimeout(refreshStatus, 250);
+          return;
+        }
         const result = await request("/api/spotify/play", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ uri: item.uri, deviceId: $("#spotifyDevice").value }),
         });
+        if (item.type === "track") setCurrentTrack(item.title, item.subtitle);
         notify(`Afspiller ${item.title} på ${result.device}`);
         setTimeout(refreshStatus, 700);
       } catch (error) {
@@ -577,6 +651,7 @@ function renderSpotifyResults(items) {
     row.append(cover, details, detail, type, play);
     return row;
   }));
+  updateTrackHighlights();
 }
 
 async function runSpotifySearch(query) {
@@ -860,7 +935,11 @@ $("#settingsForm").addEventListener("submit", async (event) => {
 });
 
 setRange($("#volume"), Number($("#volume").value), 100);
-loadConfiguration();
-refreshStatus();
-loadDevice();
-setInterval(refreshStatus, 2000);
+
+async function initialize() {
+  await refreshStatus();
+  await Promise.all([loadConfiguration(), loadDevice()]);
+  setInterval(refreshStatus, 2000);
+}
+
+initialize();

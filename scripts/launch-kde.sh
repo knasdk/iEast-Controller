@@ -30,14 +30,29 @@ esac
 if [ -n "${IEAST_BROWSER:-}" ]; then
   command -v "$IEAST_BROWSER" >/dev/null 2>&1 || fail "Browseren '$IEAST_BROWSER' blev ikke fundet."
   browser="$IEAST_BROWSER"
+  browser_type="command"
 else
   browser=""
-  for candidate in chromium chromium-browser google-chrome google-chrome-stable; do
+  browser_type="command"
+  for candidate in chromium chromium-browser; do
     if command -v "$candidate" >/dev/null 2>&1; then
       browser="$candidate"
       break
     fi
   done
+  if [ -z "$browser" ] && command -v flatpak >/dev/null 2>&1 && flatpak info com.brave.Browser >/dev/null 2>&1; then
+    browser="com.brave.Browser"
+    browser_type="flatpak"
+    BROWSER_DATA_DIR="$HOME/.var/app/com.brave.Browser/config/ieast-controller/browser"
+  fi
+  if [ -z "$browser" ]; then
+    for candidate in google-chrome google-chrome-stable; do
+      if command -v "$candidate" >/dev/null 2>&1; then
+        browser="$candidate"
+        break
+      fi
+    done
+  fi
   [ -n "$browser" ] || fail "Installér Chromium eller Google Chrome for at bruge KDE-appen."
 fi
 
@@ -77,8 +92,16 @@ done
 
 [ "$attempt" -lt 50 ] || fail "iEast Controller svarede ikke. Se loggen: $LOG_FILE"
 
-"$browser" \
-  --app="$APP_URL" \
-  --class=iEastController \
-  --no-first-run \
-  --user-data-dir="$BROWSER_DATA_DIR"
+browser_args=(
+  "--app=$APP_URL"
+  "--class=iEastController"
+  "--no-first-run"
+  "--ozone-platform=x11"
+  "--user-data-dir=$BROWSER_DATA_DIR"
+)
+
+if [ "$browser_type" = "flatpak" ]; then
+  flatpak run "$browser" "${browser_args[@]}"
+else
+  "$browser" "${browser_args[@]}"
+fi
