@@ -40,8 +40,9 @@
 
         <div class="player">
           <p class="eyebrow" id="source">IEAST STREAMER</p>
-          <h1 id="title">Klar til musik</h1>
+          <h1><button class="now-link now-title" id="title" type="button" disabled>Klar til musik</button></h1>
           <p class="artist" id="artist">Vælg en stream eller start afspilning</p>
+          <p class="now-album" id="albumRow" hidden><span>Album</span><button class="now-link" id="album" type="button" disabled></button></p>
 
           <div class="timeline">
             <input id="seek" type="range" min="0" max="100" value="0" aria-label="Position">
@@ -69,7 +70,50 @@
             <input id="volume" type="range" min="0" max="100" value="21" aria-label="Lydstyrke">
             <output id="volumeValue">21</output>
           </div>
+          <div class="tone-controls" aria-label="Tonekontroller">
+            <label class="tone-row" for="bass">
+              <span>Bas</span>
+              <input id="bass" type="range" min="-12" max="12" step="2" value="0">
+              <output id="bassValue">0</output>
+            </label>
+            <label class="tone-row" for="treble">
+              <span>Diskant</span>
+              <input id="treble" type="range" min="-12" max="12" step="2" value="0">
+              <output id="trebleValue">0</output>
+            </label>
+          </div>
         </div>
+      </section>
+
+      <section class="queue-card">
+        <div class="queue-heading">
+          <div><p class="eyebrow">AFSPILNING</p><h2>Aktuel kø</h2></div>
+          <strong id="queueSummary">Køen er tom</strong>
+        </div>
+        <div class="queue-options">
+          <label class="toggle-button"><input id="queueAutoNext" type="checkbox" checked><span>Næste nummer automatisk</span><b class="toggle-state"></b></label>
+          <label class="toggle-button"><input id="queueContinueAlbums" type="checkbox"><span>Fortsæt med næste album</span><b class="toggle-state"></b></label>
+          <div class="queue-shuffle" role="group" aria-label="Bland køens rækkefølge">
+            <button id="shuffleQueue" type="button">Bland</button>
+            <button id="resetQueueOrder" type="button">Nulstil</button>
+          </div>
+        </div>
+        <ol class="queue-list" id="queueList"></ol>
+        <button class="queue-clear" id="clearQueue" type="button">Ryd aktuel kø</button>
+        <section class="saved-playlists" aria-labelledby="playlistsHeading">
+          <div class="saved-playlists-heading">
+            <div><p class="eyebrow">GEMT MUSIK</p><h3 id="playlistsHeading">Afspilningslister</h3></div>
+            <strong id="playlistSummary">Ingen gemte lister</strong>
+          </div>
+          <div class="playlist-controls">
+            <select id="savedPlaylist" aria-label="Gemt afspilningsliste"><option value="">Ingen gemte lister</option></select>
+            <label class="toggle-button"><input id="playlistShuffle" type="checkbox"><span>Random</span><b class="toggle-state"></b></label>
+            <button id="playPlaylist" type="button">Afspil liste</button>
+            <button class="secondary-action" id="updatePlaylist" type="button">Opdater liste</button>
+            <button class="secondary-action" id="deletePlaylist" type="button">Slet liste</button>
+          </div>
+          <ol class="playlist-contents" id="playlistContents"></ol>
+        </section>
       </section>
 
       <section class="library-card">
@@ -110,6 +154,13 @@
         <div class="results-toolbar">
           <button class="back-button" id="backToSearch" type="button" hidden>← Tilbage til søgeresultater</button>
           <div class="search-status" id="searchStatus">Søg blandt musikken på din lokale medieserver.</div>
+        </div>
+        <div class="selection-toolbar">
+          <span id="selectionSummary">Ingen valgte</span>
+          <button id="playSelection" type="button" disabled>Afspil valgte</button>
+          <button id="appendSelection" type="button" disabled>Føj til kø</button>
+          <input id="playlistName" type="text" maxlength="100" placeholder="Navn på liste" aria-label="Navn på afspilningsliste">
+          <button id="saveSelection" type="button">Gem liste</button>
         </div>
         <div class="search-results" id="searchResults"></div>
         <nav class="pagination" id="pagination" aria-label="Sider" hidden></nav>

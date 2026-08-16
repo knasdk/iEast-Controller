@@ -1,4 +1,5 @@
 const http = require("node:http");
+const net = require("node:net");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -31,12 +32,15 @@ const STATE_DIR = path.resolve(process.env.STATE_DIR || path.join(__dirname, ".s
 const SETTINGS_FILE = path.join(STATE_DIR, "settings.json");
 const SPOTIFY_FILE = path.join(STATE_DIR, "spotify.json");
 const PLAYBACK_FILE = path.join(STATE_DIR, "playback.json");
+const QUEUE_FILE = path.join(STATE_DIR, "queue.json");
 const SPOTIFY_REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI || "";
 const artworkCache = new Map();
 let directPlayback = null;
 let spotifyAuthorization = null;
 let streamerName = "";
 let spotifyPlaybackCache = { expiresAt: 0, value: null };
+let queueRuntime = null;
+let queueBusy = false;
 
 const defaultRadios = [
   { id: "radio-nova", name: "Nova FM", url: "http://live-bauerdk.sharp-stream.com/nova_dk_mp3", artwork: "https://www.radio.dk/300/novafm.png" },
@@ -106,6 +110,22 @@ if (PLAYBACK_FILE) {
     // Playback metadata is created after the first local stream starts.
   }
 }
+const emptyQueue = () => ({
+  items: [], originalItems: null, index: -1, state: "stopped",
+  options: { autoNext: true, continueAlbums: false, shuffle: false },
+});
+let queueStore = { version: 1, revision: 0, queue: emptyQueue(), playlists: [] };
+try {
+  const savedQueue = JSON.parse(fs.readFileSync(QUEUE_FILE, "utf8"));
+  queueStore = {
+    version: 1,
+    revision: Number(savedQueue.revision) || 0,
+    queue: { ...emptyQueue(), ...savedQueue.queue, state: "stopped" },
+    playlists: Array.isArray(savedQueue.playlists) ? savedQueue.playlists : [],
+  };
+} catch {
+  // Queue state is created when the first item is added.
+}
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -157,6 +177,14 @@ function saveDirectPlayback(playback) {
   }
   fs.writeFileSync(PLAYBACK_FILE, `${JSON.stringify(playback, null, 2)}\n`, { mode: 0o600 });
   fs.chmodSync(PLAYBACK_FILE, 0o600);
+}
+
+function saveQueueStore() {
+  queueStore.revision += 1;
+  const temporary = `${QUEUE_FILE}.tmp`;
+  fs.writeFileSync(temporary, `${JSON.stringify(queueStore, null, 2)}\n`, { mode: 0o600 });
+  fs.renameSync(temporary, QUEUE_FILE);
+  fs.chmodSync(QUEUE_FILE, 0o600);
 }
 
 function clearSpotifyTokens() {
@@ -224,6 +252,93 @@ function saveConfig(nextConfig) {
     fs.chmodSync(SETTINGS_FILE, 0o600);
   }
   return config;
+}
+
+function toneCommand(action, value) {
+  const prefixes = { treble: "1", bass: "2" };
+  if (!prefixes[action] || !Number.isInteger(value) || value < -12 || value > 12 || value % 2 !== 0) return null;
+  const progress = value < 0 ? 6 + value / 2 : value > 0 ? 7 + value / 2 : 6;
+  return `MCU+PAS+${prefixes[action]}${String(progress + 1).padStart(2, "0")}&`;
+}
+
+function toneFromDevice(payloads) {
+  const tone = {};
+  for (const match of String(Array.isArray(payloads) ? payloads.join("") : payloads || "").matchAll(/MCU\+PAS\+([12])(\d{2})&/g)) {
+    const progress = Number(match[2]) - 1;
+    const value = progress < 6 ? (progress - 6) * 2 : progress > 7 ? (progress - 7) * 2 : 0;
+    tone[match[1] === "1" ? "treble" : "bass"] = value;
+  }
+  return Number.isFinite(tone.bass) && Number.isFinite(tone.treble) ? tone : null;
+}
+
+function mcuFrame(command) {
+  const frame = Buffer.alloc(20 + Buffer.byteLength(command));
+  frame.writeUInt32LE(538482200, 0);
+  frame.writeUInt32LE(Buffer.byteLength(command), 4);
+  frame.write(command, 20);
+  return frame;
+}
+
+function mcuCommand(command, complete) {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: config.deviceIp, port: 8899 });
+    const payloads = [];
+    let pending = Buffer.alloc(0);
+    let settled = false;
+    const finish = (error, result) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      if (error) reject(error);
+      else resolve(result);
+    };
+
+    socket.setTimeout(3000);
+    socket.on("connect", () => socket.write(mcuFrame(command)));
+    socket.on("timeout", () => finish(new Error("Enheden svarede ikke på tonekommandoen")));
+    socket.on("error", (error) => finish(error));
+    socket.on("data", (chunk) => {
+      pending = Buffer.concat([pending, chunk]);
+      while (pending.length >= 20) {
+        const magic = pending.readUInt32LE(0);
+        const length = pending.readUInt32LE(4);
+        if (magic !== 538482200 || length > 65_536) return finish(new Error("Enheden sendte et ugyldigt tonesvar"));
+        if (pending.length < 20 + length) return;
+        payloads.push(pending.subarray(20, 20 + length).toString());
+        pending = pending.subarray(20 + length);
+        const result = complete(payloads);
+        if (result) return finish(null, result);
+      }
+    });
+  });
+}
+
+function getDeviceTone() {
+  return mcuCommand("MCU+PAS+EQGet&", toneFromDevice);
+}
+
+function sendMcuCommand(command) {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: config.deviceIp, port: 8899 });
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      if (error) reject(error);
+      else resolve();
+    };
+    socket.setTimeout(3000);
+    socket.on("timeout", () => finish(new Error("Enheden svarede ikke på tonekommandoen")));
+    socket.on("error", finish);
+    socket.on("connect", () => socket.write(mcuFrame(command), finish));
+  });
+}
+
+async function setDeviceTone(command) {
+  await sendMcuCommand(command);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  return getDeviceTone();
 }
 
 function publicConfig() {
@@ -296,8 +411,10 @@ function spotifySearchResults(data) {
   ];
 }
 
-function spotifyPlayerStatus(playback, deviceName) {
+function spotifyPlayerStatus(playback, deviceName, deviceStatus) {
   if (!playback?.item || playback.item.type !== "track" || playback.device?.name !== deviceName) return null;
+  const status = String(deviceStatus?.status || "").toLowerCase();
+  if (status === "stop" || (["play", "playing"].includes(status) && !playback.is_playing) || (status === "pause" && playback.is_playing)) return null;
   return {
     status: playback.is_playing ? "play" : "pause",
     curpos: Number(playback.progress_ms) || 0,
@@ -305,19 +422,22 @@ function spotifyPlayerStatus(playback, deviceName) {
     Title: playback.item.name || "",
     Artist: playback.item.artists?.map((artist) => artist.name).join(", ") || "",
     Album: playback.item.album?.name || "",
+    albumUri: playback.item.album?.uri || null,
     artwork: playback.item.album?.images?.[0]?.url || null,
     spotifyUri: playback.item.uri || null,
     mediaType: "track",
   };
 }
 
-async function getSpotifyPlayerStatus(deviceName) {
+async function getSpotifyPlayerStatus(deviceName, deviceStatus) {
   if (!spotifyTokens || !deviceName) return null;
-  if (spotifyPlaybackCache.expiresAt > Date.now()) return spotifyPlaybackCache.value;
   try {
-    const value = spotifyPlayerStatus(await spotifyFetch("/me/player"), deviceName);
-    spotifyPlaybackCache = { expiresAt: Date.now() + 3000, value };
-    return value;
+    let playback = spotifyPlaybackCache.value;
+    if (spotifyPlaybackCache.expiresAt <= Date.now()) {
+      playback = await spotifyFetch("/me/player");
+      spotifyPlaybackCache = { expiresAt: Date.now() + 3000, value: playback };
+    }
+    return spotifyPlayerStatus(playback, deviceName, deviceStatus);
   } catch {
     return null;
   }
@@ -355,19 +475,28 @@ function mediaArtworkUrl(value, baseUrl) {
   }
 }
 
+function durationMilliseconds(value) {
+  const parts = String(value || "").split(":").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return 0;
+  return Math.round((parts[0] * 3600 + parts[1] * 60 + parts[2]) * 1000);
+}
+
 function parseMediaResponse(soap, baseUrl) {
   const didl = decodeXml(xmlValue(soap, "Result"));
-  const items = [...didl.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].map((match) => {
-    const item = match[1];
+  const items = [...didl.matchAll(/<item\b([^>]*)>([\s\S]*?)<\/item>/gi)].map((match) => {
+    const item = match[2];
     const resource = item.match(/<res\b([^>]*)>([\s\S]*?)<\/res>/i);
     return {
       type: "item",
+      id: xmlAttribute(match[1], "id"),
+      parentId: xmlAttribute(match[1], "parentID"),
       mediaClass: xmlValue(item, "upnp:class"),
       title: xmlValue(item, "dc:title"),
       artist: xmlValue(item, "upnp:artist") || xmlValue(item, "dc:creator"),
       album: xmlValue(item, "upnp:album"),
       track: Number(xmlValue(item, "upnp:originalTrackNumber")) || null,
       duration: resource?.[1].match(/duration="([^"]+)"/i)?.[1] || "",
+      durationMs: durationMilliseconds(resource?.[1].match(/duration="([^"]+)"/i)?.[1]),
       url: resource ? decodeXml(resource[2].trim()) : "",
       artwork: mediaArtworkUrl(xmlValue(item, "upnp:albumArtURI"), baseUrl),
     };
@@ -375,24 +504,52 @@ function parseMediaResponse(soap, baseUrl) {
   const containers = [...didl.matchAll(/<container\b([^>]*)>([\s\S]*?)<\/container>/gi)].map((match) => ({
     type: "container",
     id: xmlAttribute(match[1], "id"),
+    parentId: xmlAttribute(match[1], "parentID"),
+    mediaClass: xmlValue(match[2], "upnp:class"),
     title: xmlValue(match[2], "dc:title"),
     childCount: Number(xmlAttribute(match[1], "childCount")) || 0,
     artwork: mediaArtworkUrl(xmlValue(match[2], "upnp:albumArtURI"), baseUrl),
   }));
-  return { items, containers, total: Number(xmlValue(soap, "TotalMatches")) || items.length + containers.length };
+  return {
+    items,
+    containers,
+    numberReturned: Number(xmlValue(soap, "NumberReturned")) || items.length + containers.length,
+    total: Number(xmlValue(soap, "TotalMatches")) || items.length + containers.length,
+  };
 }
 
-function currentPlayerStatus(status, playback) {
+function decodeDeviceText(value) {
+  const text = String(value || "");
+  if (!text || text.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(text)) return text;
+  const decoded = Buffer.from(text, "hex").toString("utf8").trim();
+  return decoded.includes("\uFFFD") ? text : decoded;
+}
+
+function playbackTitle(value) {
+  return decodeDeviceText(value?.Title || value?.title).normalize("NFKC").trim().toLocaleLowerCase();
+}
+
+function directPlaybackMatches(status, playback, now = Date.now()) {
+  if (!playback || !new Set(["10", "20", "21"]).has(String(status.mode))) return false;
+  if (now - Number(playback.startedAt || 0) < 5000) return true;
+  const current = playbackTitle(status);
+  if (!current) return true;
+  return current === playbackTitle(playback) || current === playbackTitle(playback.deviceStatusAtStart);
+}
+
+function currentPlayerStatus(status, playback, now = Date.now()) {
   if (!playback) return status;
-  const directMode = new Set(["10", "20", "21"]).has(String(status.mode));
-  if (!directMode) return status;
-  const { startedAt, ...metadata } = playback;
+  if (!directPlaybackMatches(status, playback, now)) return status;
+  const { deviceStatusAtStart, startedAt, ...metadata } = playback;
   return { ...status, ...metadata };
 }
 
 function unknownDirectPlaybackStatus(status, hasPlaybackMetadata) {
   const directMode = new Set(["10", "20", "21"]).has(String(status.mode));
   if (!directMode || hasPlaybackMetadata) return status;
+  if (status.Title || status.title) {
+    return { ...status, mediaType: Number(status.totlen) > 0 ? "track" : "radio" };
+  }
   return {
     ...status,
     Title: "Ekstern afspilning",
@@ -400,6 +557,9 @@ function unknownDirectPlaybackStatus(status, hasPlaybackMetadata) {
     Album: "",
     artwork: null,
     disableArtwork: true,
+    curpos: 0,
+    totlen: 0,
+    mediaType: "radio",
   };
 }
 
@@ -424,8 +584,8 @@ async function queryMediaServer(criteria, server, { start = 0, count = 20, sort 
   }
 }
 
-async function browseMediaServer(objectId, server) {
-  const body = `<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1"><ObjectID>${escapeXml(objectId)}</ObjectID><BrowseFlag>BrowseDirectChildren</BrowseFlag><Filter>*</Filter><StartingIndex>0</StartingIndex><RequestedCount>500</RequestedCount><SortCriteria></SortCriteria></u:Browse></s:Body></s:Envelope>`;
+async function browseMediaServer(objectId, server, { flag = "BrowseDirectChildren", start = 0, count = 500 } = {}) {
+  const body = `<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:Browse xmlns:u="urn:schemas-upnp-org:service:ContentDirectory:1"><ObjectID>${escapeXml(objectId)}</ObjectID><BrowseFlag>${flag}</BrowseFlag><Filter>*</Filter><StartingIndex>${start}</StartingIndex><RequestedCount>${count}</RequestedCount><SortCriteria></SortCriteria></u:Browse></s:Body></s:Envelope>`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 6000);
   try {
@@ -445,6 +605,25 @@ async function browseMediaServer(objectId, server) {
   }
 }
 
+async function browseAllChildren(objectId, server) {
+  const result = { items: [], containers: [], total: 0 };
+  let start = 0;
+  do {
+    const page = await browseMediaServer(objectId, server, { start, count: 500 });
+    result.items.push(...page.items);
+    result.containers.push(...page.containers);
+    result.total = page.total;
+    start += page.numberReturned;
+    if (!page.numberReturned) break;
+  } while (start < result.total && start < 10_000);
+  return result;
+}
+
+async function browseMediaObject(objectId, server) {
+  const result = await browseMediaServer(objectId, server, { flag: "BrowseMetadata", count: 0 });
+  return result.containers[0] || result.items[0] || null;
+}
+
 function escapeSearchValue(value) {
   return String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
@@ -461,6 +640,299 @@ async function getAlbum(album, server) {
   const result = await queryMediaServer(criteria, server, { count: 200, sort: "+upnp:originalTrackNumber" });
   result.items.sort((a, b) => (a.track || Number.MAX_SAFE_INTEGER) - (b.track || Number.MAX_SAFE_INTEGER));
   return result;
+}
+
+function configuredMediaServer(serverId) {
+  return config.mediaServers.find((server) => server.id === serverId);
+}
+
+function shuffled(items) {
+  const result = [...items];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const target = crypto.randomInt(index + 1);
+    [result[index], result[target]] = [result[target], result[index]];
+  }
+  return result;
+}
+
+function shuffledQueue(items) {
+  if (items.length < 2) return [...items];
+  if (items.length === 2) return [items[1], items[0]];
+  const originalIndexes = new Map(items.map((item, index) => [item, index]));
+  const albumKey = (item) => String(item.album || item.queueItemId || item.objectId || "").normalize("NFKC").trim().toLocaleLowerCase();
+  const scoreCandidate = (candidate) => {
+    let displacement = 0;
+    let fixed = 0;
+    let oldNeighbours = 0;
+    let sameAlbumNeighbours = 0;
+    let albumRunPenalty = 0;
+    let albumRunLength = 1;
+    for (let index = 0; index < candidate.length; index += 1) {
+      const originalIndex = originalIndexes.get(candidate[index]);
+      displacement += Math.abs(originalIndex - index);
+      if (originalIndex === index) fixed += 1;
+      if (index && Math.abs(originalIndex - originalIndexes.get(candidate[index - 1])) === 1) oldNeighbours += 1;
+      if (index && albumKey(candidate[index]) === albumKey(candidate[index - 1])) {
+        sameAlbumNeighbours += 1;
+        albumRunLength += 1;
+      } else if (index) {
+        albumRunPenalty += (albumRunLength - 1) ** 2;
+        albumRunLength = 1;
+      }
+    }
+    albumRunPenalty += (albumRunLength - 1) ** 2;
+    return displacement
+      - fixed * items.length * 8
+      - oldNeighbours * items.length * 2
+      - sameAlbumNeighbours * items.length * items.length * 2
+      - albumRunPenalty * items.length * items.length * 4;
+  };
+  const interleaveAlbums = () => {
+    const grouped = new Map();
+    for (const item of items) {
+      const key = albumKey(item);
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(item);
+    }
+    for (const [key, tracks] of grouped) grouped.set(key, shuffled(tracks));
+    const result = [];
+    const total = items.length;
+    const albumWeights = new Map([...grouped].map(([key, tracks]) => [key, tracks.length]));
+    const weights = new Map([...grouped].map(([key]) => [key, crypto.randomInt(total)]));
+    while (result.length < items.length) {
+      const available = [...grouped.entries()].filter(([, tracks]) => tracks.length);
+      for (const [key] of available) weights.set(key, weights.get(key) + albumWeights.get(key));
+      const largest = Math.max(...available.map(([key]) => weights.get(key)));
+      const candidates = available.filter(([key]) => weights.get(key) === largest);
+      const [key, tracks] = candidates[crypto.randomInt(candidates.length)];
+      result.push(tracks.shift());
+      weights.set(key, weights.get(key) - total);
+    }
+    return result;
+  };
+  let best = null;
+  let bestScore = -Infinity;
+  for (let attempt = 0; attempt < 128; attempt += 1) {
+    const candidates = [interleaveAlbums()];
+    const sattolo = [...items];
+    for (let index = sattolo.length - 1; index > 0; index -= 1) {
+      const target = crypto.randomInt(index);
+      [sattolo[index], sattolo[target]] = [sattolo[target], sattolo[index]];
+    }
+    candidates.push(sattolo);
+    for (const candidate of candidates) {
+      const score = scoreCandidate(candidate);
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+  }
+  return best;
+}
+
+function queueTrack(item, serverId, originAlbum = null) {
+  let url;
+  try {
+    url = new URL(item.url);
+    if (!new Set(["http:", "https:"]).has(url.protocol)) return null;
+  } catch {
+    return null;
+  }
+  return {
+    queueItemId: crypto.randomUUID(),
+    type: "track",
+    serverId: String(serverId || "").slice(0, 100),
+    objectId: String(item.objectId || item.id || "").slice(0, 500),
+    parentId: String(item.parentId || "").slice(0, 500),
+    url: url.href,
+    title: String(item.title || "Ukendt titel").slice(0, 300),
+    artist: String(item.artist || "").slice(0, 200),
+    album: String(item.album || originAlbum?.title || "").slice(0, 300),
+    artwork: typeof item.artwork === "string" ? item.artwork : null,
+    durationMs: Math.max(0, Number(item.durationMs) || durationMilliseconds(item.duration)),
+    track: Number(item.track) || null,
+    originAlbum,
+  };
+}
+
+async function expandAlbum(entry, shuffle = false) {
+  const server = configuredMediaServer(entry.serverId);
+  if (!server) throw new Error("Medieserveren findes ikke længere");
+  let album = null;
+  let result;
+  if (entry.albumId) {
+    album = await browseMediaObject(entry.albumId, server);
+    result = await browseAllChildren(entry.albumId, server);
+  } else {
+    result = await getAlbum(entry.album, server);
+  }
+  const originAlbum = {
+    id: String(entry.albumId || album?.id || ""),
+    parentId: String(album?.parentId || entry.albumParentId || ""),
+    title: String(album?.title || entry.album || "Album").slice(0, 300),
+  };
+  const ordered = [...result.items].sort((left, right) =>
+    (left.track || Number.MAX_SAFE_INTEGER) - (right.track || Number.MAX_SAFE_INTEGER)
+      || left.title.localeCompare(right.title, "da", { sensitivity: "base", numeric: true }));
+  const tracks = ordered.map((item) => queueTrack(item, entry.serverId, originAlbum)).filter(Boolean);
+  return shuffle ? shuffled(tracks) : tracks;
+}
+
+async function resolveQueueEntries(entries, shuffle = false) {
+  const tracks = [];
+  for (const entry of entries.slice(0, 2000)) {
+    if (entry?.type === "album") tracks.push(...await expandAlbum(entry, shuffle));
+    else if (entry?.type === "track") {
+      const track = queueTrack(entry.track || entry, entry.serverId || entry.track?.serverId);
+      if (track) tracks.push(track);
+    }
+    if (tracks.length >= 10_000) break;
+  }
+  return tracks.slice(0, 10_000);
+}
+
+async function playQueueIndex(index) {
+  const item = queueStore.queue.items[index];
+  if (!item) {
+    await deviceCommand("setPlayerCmd:stop").catch(() => null);
+    queueStore.queue.state = "stopped";
+    queueStore.queue.index = queueStore.queue.items.length ? queueStore.queue.items.length - 1 : -1;
+    queueRuntime = null;
+    saveDirectPlayback(null);
+    saveQueueStore();
+    return null;
+  }
+  const deviceStatusAtStart = await deviceCommand("getPlayerStatus").catch(() => null);
+  await deviceCommand(`setPlayerCmd:play:${item.url}`);
+  queueStore.queue.index = index;
+  queueStore.queue.state = "playing";
+  saveDirectPlayback({
+    Title: item.title, Artist: item.artist, Album: item.album, artwork: item.artwork,
+    mediaType: "track", serverId: item.serverId, parentId: item.parentId,
+    folderTitle: item.album, queueItemId: item.queueItemId, deviceStatusAtStart, startedAt: Date.now(),
+  });
+  queueRuntime = {
+    queueItemId: item.queueItemId, confirmed: false, lastPosition: 0,
+    maxPosition: 0, terminalSamples: 0, startedAt: Date.now(),
+  };
+  saveQueueStore();
+  return item;
+}
+
+async function appendNextAlbum() {
+  const current = queueStore.queue.items.at(-1)?.originAlbum;
+  if (!current?.id) return false;
+  const serverId = queueStore.queue.items.at(-1).serverId;
+  const server = configuredMediaServer(serverId);
+  if (!server) return false;
+  let parentId = current.parentId;
+  if (!parentId) parentId = (await browseMediaObject(current.id, server))?.parentId;
+  if (!parentId) return false;
+  const siblings = (await browseAllChildren(parentId, server)).containers
+    .sort((left, right) => left.title.localeCompare(right.title, "da", { sensitivity: "base", numeric: true }) || left.id.localeCompare(right.id));
+  const currentIndex = siblings.findIndex((album) => album.id === current.id);
+  for (const sibling of siblings.slice(currentIndex + 1)) {
+    const tracks = await expandAlbum({ type: "album", serverId, albumId: sibling.id, album: sibling.title }, queueStore.queue.options.shuffle);
+    if (tracks.length) {
+      queueStore.queue.items.push(...tracks);
+      saveQueueStore();
+      return true;
+    }
+  }
+  return false;
+}
+
+async function advanceQueue(step = 1) {
+  let nextIndex = queueStore.queue.index + step;
+  if (nextIndex >= queueStore.queue.items.length && queueStore.queue.options.continueAlbums) {
+    await appendNextAlbum();
+  }
+  nextIndex = Math.max(0, nextIndex);
+  return playQueueIndex(nextIndex);
+}
+
+function queueAtNaturalEnd(raw, runtime, item) {
+  const duration = Math.max(Number(raw.totlen) || 0, item.durationMs || 0);
+  return String(raw.status || "").toLowerCase() === "stop"
+    && runtime.confirmed && duration > 0 && duration - runtime.maxPosition <= 7000;
+}
+
+async function observeQueuePlayback() {
+  if (queueBusy || !queueRuntime || !["playing", "paused"].includes(queueStore.queue.state)) return;
+  queueBusy = true;
+  try {
+    const raw = await deviceCommand("getPlayerStatus");
+    if (queueRuntime.queueItemId !== queueStore.queue.items[queueStore.queue.index]?.queueItemId) return;
+    const status = String(raw.status || "").toLowerCase();
+    const position = Math.max(0, Number(raw.curpos) || 0);
+    const item = queueStore.queue.items[queueStore.queue.index];
+    if (["play", "playing"].includes(status)) {
+      if (position > queueRuntime.lastPosition || playbackTitle(raw) === playbackTitle({ title: item.title })) queueRuntime.confirmed = true;
+      queueRuntime.lastPosition = position;
+      queueRuntime.maxPosition = Math.max(queueRuntime.maxPosition, position);
+      queueRuntime.terminalSamples = 0;
+      if (queueStore.queue.state !== "playing") {
+        queueStore.queue.state = "playing";
+        saveQueueStore();
+      }
+    } else if (status === "pause") {
+      queueRuntime.terminalSamples = 0;
+      if (queueStore.queue.state !== "paused") {
+        queueStore.queue.state = "paused";
+        saveQueueStore();
+      }
+    } else if (queueAtNaturalEnd(raw, queueRuntime, item)) {
+      queueRuntime.terminalSamples += 1;
+      if (queueRuntime.terminalSamples >= 2) {
+        if (queueStore.queue.options.autoNext) await advanceQueue(1);
+        else {
+          queueStore.queue.state = "stopped";
+          queueRuntime = null;
+          saveQueueStore();
+        }
+      }
+    }
+  } finally {
+    queueBusy = false;
+  }
+}
+
+function queuePayload() {
+  return { revision: queueStore.revision, ...queueStore.queue, playlists: queueStore.playlists };
+}
+
+function matchingQueueIndex(status, queue) {
+  if (!new Set(["10", "20", "21"]).has(String(status.mode))) return -1;
+  const title = playbackTitle(status);
+  if (!title) return -1;
+  const current = queue.items[queue.index];
+  if (current && playbackTitle({ title: current.title }) === title) return queue.index;
+  return queue.items.findIndex((item) => playbackTitle({ title: item.title }) === title);
+}
+
+function reconcileQueueStatus(status) {
+  const index = matchingQueueIndex(status, queueStore.queue);
+  if (index < 0) return;
+  const deviceState = String(status.status || "").toLowerCase();
+  if (!["play", "playing", "pause"].includes(deviceState)) return;
+  const state = deviceState === "pause" ? "paused" : "playing";
+  const item = queueStore.queue.items[index];
+  const changed = queueStore.queue.index !== index || queueStore.queue.state !== state;
+  queueStore.queue.index = index;
+  queueStore.queue.state = state;
+  if (!queueRuntime || queueRuntime.queueItemId !== item.queueItemId) {
+    const position = Math.max(0, Number(status.curpos) || 0);
+    queueRuntime = {
+      queueItemId: item.queueItemId,
+      confirmed: state === "playing",
+      lastPosition: position,
+      maxPosition: position,
+      terminalSamples: 0,
+      startedAt: Date.now(),
+    };
+  }
+  if (changed) saveQueueStore();
 }
 
 async function readJson(request) {
@@ -636,8 +1108,149 @@ async function api(request, response, pathname) {
     return sendJson(response, 200, publicConfig());
   }
 
+  if (request.method === "GET" && pathname === "/api/tone") {
+    const tone = await getDeviceTone();
+    return tone
+      ? sendJson(response, 200, tone)
+      : sendJson(response, 409, { error: "Den valgte iEast-enhed kan ikke aflæse tonekontrol" });
+  }
+
+  if (request.method === "POST" && pathname === "/api/tone") {
+    const body = await readJson(request);
+    const command = toneCommand(body.action, body.value);
+    if (!command) return sendJson(response, 400, { error: "Ugyldig toneindstilling" });
+    return sendJson(response, 200, await setDeviceTone(command));
+  }
+
+  if (request.method === "GET" && pathname === "/api/queue") return sendJson(response, 200, queuePayload());
+
+  if (request.method === "PUT" && pathname === "/api/queue/options") {
+    const body = await readJson(request);
+    for (const key of ["autoNext", "continueAlbums", "shuffle"]) {
+      if (typeof body[key] === "boolean") queueStore.queue.options[key] = body[key];
+    }
+    saveQueueStore();
+    return sendJson(response, 200, queuePayload());
+  }
+
+  if (request.method === "POST" && pathname === "/api/queue") {
+    const body = await readJson(request);
+    if (!Array.isArray(body.entries) || !body.entries.length) return sendJson(response, 400, { error: "Vælg mindst ét nummer eller album" });
+    const shuffle = typeof body.shuffle === "boolean" ? body.shuffle : queueStore.queue.options.shuffle;
+    let tracks = await resolveQueueEntries(body.entries, shuffle);
+    if (!tracks.length) return sendJson(response, 409, { error: "Valget indeholder ingen afspillelige numre" });
+    if (body.startObjectId) {
+      const startIndex = tracks.findIndex((track) => track.objectId === body.startObjectId);
+      if (startIndex > 0) tracks = shuffle
+        ? [tracks[startIndex], ...tracks.slice(0, startIndex), ...tracks.slice(startIndex + 1)]
+        : tracks.slice(startIndex);
+    }
+    if (body.mode === "append") {
+      queueStore.queue.items.push(...tracks);
+      if (queueStore.queue.originalItems) queueStore.queue.originalItems.push(...tracks);
+    }
+    else {
+      queueStore.queue = { ...emptyQueue(), options: { ...queueStore.queue.options, shuffle }, items: tracks };
+      queueRuntime = null;
+    }
+    saveQueueStore();
+    if (body.play !== false && body.mode !== "append") await playQueueIndex(0);
+    return sendJson(response, 200, queuePayload());
+  }
+
+  if (request.method === "DELETE" && pathname === "/api/queue") {
+    queueStore.queue = emptyQueue();
+    queueRuntime = null;
+    saveQueueStore();
+    return sendJson(response, 200, queuePayload());
+  }
+
+  if (request.method === "POST" && pathname === "/api/queue/shuffle") {
+    if (queueStore.queue.items.length < 2) return sendJson(response, 200, queuePayload());
+    const currentId = queueStore.queue.items[queueStore.queue.index]?.queueItemId;
+    if (!queueStore.queue.originalItems) queueStore.queue.originalItems = [...queueStore.queue.items];
+    queueStore.queue.items = shuffledQueue(queueStore.queue.items);
+    queueStore.queue.index = currentId ? queueStore.queue.items.findIndex((item) => item.queueItemId === currentId) : -1;
+    saveQueueStore();
+    return sendJson(response, 200, queuePayload());
+  }
+
+  if (request.method === "POST" && pathname === "/api/queue/reset") {
+    if (!queueStore.queue.originalItems) return sendJson(response, 200, queuePayload());
+    const currentId = queueStore.queue.items[queueStore.queue.index]?.queueItemId;
+    queueStore.queue.items = queueStore.queue.originalItems;
+    queueStore.queue.originalItems = null;
+    queueStore.queue.index = currentId ? queueStore.queue.items.findIndex((item) => item.queueItemId === currentId) : -1;
+    saveQueueStore();
+    return sendJson(response, 200, queuePayload());
+  }
+
+  if (request.method === "POST" && pathname === "/api/queue/play-index") {
+    const body = await readJson(request);
+    if (!Number.isInteger(body.index) || body.index < 0 || body.index >= queueStore.queue.items.length) {
+      return sendJson(response, 400, { error: "Ugyldigt nummer i køen" });
+    }
+    await playQueueIndex(body.index);
+    return sendJson(response, 200, queuePayload());
+  }
+
+  if (request.method === "POST" && pathname === "/api/playlists") {
+    const body = await readJson(request);
+    const name = String(body.name || "").trim().slice(0, 100);
+    if (!name) return sendJson(response, 400, { error: "Afspilningslisten skal have et navn" });
+    const entries = Array.isArray(body.entries) && body.entries.length
+      ? body.entries.slice(0, 2000)
+      : queueStore.queue.items.map((track) => ({ type: "track", serverId: track.serverId, track }));
+    if (!entries.length) return sendJson(response, 400, { error: "Afspilningslisten er tom" });
+    const tracks = await resolveQueueEntries(entries, false);
+    if (!tracks.length) return sendJson(response, 409, { error: "Afspilningslisten indeholder ingen afspillelige numre" });
+    queueStore.playlists.push({ id: crypto.randomUUID(), name, entries, createdAt: Date.now() });
+    queueStore.queue = { ...emptyQueue(), items: tracks, options: { ...queueStore.queue.options } };
+    queueRuntime = null;
+    saveQueueStore();
+    return sendJson(response, 201, queuePayload());
+  }
+
+  const playlistMatch = pathname.match(/^\/api\/playlists\/([0-9a-f-]+)(?:\/(play))?$/i);
+  if (playlistMatch && request.method === "PUT" && !playlistMatch[2]) {
+    const playlist = queueStore.playlists.find((item) => item.id === playlistMatch[1]);
+    if (!playlist) return sendJson(response, 404, { error: "Afspilningslisten findes ikke" });
+    const body = await readJson(request);
+    const entries = Array.isArray(body.entries) && body.entries.length
+      ? body.entries.slice(0, 2000)
+      : queueStore.queue.items.map((track) => ({ type: "track", serverId: track.serverId, track }));
+    if (!entries.length) return sendJson(response, 400, { error: "Afspilningslisten er tom" });
+    const tracks = await resolveQueueEntries(entries, false);
+    if (!tracks.length) return sendJson(response, 409, { error: "Afspilningslisten indeholder ingen afspillelige numre" });
+    playlist.entries = entries;
+    if (String(body.name || "").trim()) playlist.name = String(body.name).trim().slice(0, 100);
+    playlist.updatedAt = Date.now();
+    queueStore.queue = { ...emptyQueue(), items: tracks, options: { ...queueStore.queue.options } };
+    queueRuntime = null;
+    saveQueueStore();
+    return sendJson(response, 200, queuePayload());
+  }
+  if (playlistMatch && request.method === "DELETE" && !playlistMatch[2]) {
+    queueStore.playlists = queueStore.playlists.filter((playlist) => playlist.id !== playlistMatch[1]);
+    saveQueueStore();
+    return sendJson(response, 200, queuePayload());
+  }
+  if (playlistMatch && request.method === "POST" && playlistMatch[2] === "play") {
+    const playlist = queueStore.playlists.find((item) => item.id === playlistMatch[1]);
+    if (!playlist) return sendJson(response, 404, { error: "Afspilningslisten findes ikke" });
+    const body = await readJson(request);
+    let tracks = await resolveQueueEntries(playlist.entries, false);
+    if (body.shuffle === true) tracks = shuffled(tracks);
+    if (!tracks.length) return sendJson(response, 409, { error: "Afspilningslisten indeholder ingen afspillelige numre" });
+    queueStore.queue = { ...emptyQueue(), name: playlist.name, items: tracks, options: { ...queueStore.queue.options, shuffle: body.shuffle === true } };
+    saveQueueStore();
+    await playQueueIndex(0);
+    return sendJson(response, 200, queuePayload());
+  }
+
   if (request.method === "GET" && pathname === "/api/status") {
     const status = await deviceCommand("getPlayerStatus");
+    reconcileQueueStatus(status);
     if (!streamerName && spotifyTokens) {
       try {
         streamerName = (await deviceCommand("getStatusEx")).DeviceName || "";
@@ -645,13 +1258,12 @@ async function api(request, response, pathname) {
         // LinkPlay status remains available when extended device details fail.
       }
     }
-    const spotifyStatus = await getSpotifyPlayerStatus(streamerName);
+    const spotifyStatus = await getSpotifyPlayerStatus(streamerName, status);
     if (spotifyStatus) {
       saveDirectPlayback(null);
       return sendJson(response, 200, { ...status, ...spotifyStatus });
     }
-    const directMode = new Set(["10", "20", "21"]).has(String(status.mode));
-    if (directPlayback && !directMode) saveDirectPlayback(null);
+    if (directPlayback && !directPlaybackMatches(status, directPlayback)) saveDirectPlayback(null);
     const current = currentPlayerStatus(unknownDirectPlaybackStatus(status, Boolean(directPlayback)), directPlayback);
     return sendJson(response, 200, current);
   }
@@ -733,6 +1345,15 @@ async function api(request, response, pathname) {
 
   if (request.method === "POST" && pathname === "/api/command") {
     const body = await readJson(request);
+    if (body.action === "next" && queueStore.queue.items.length) {
+      return sendJson(response, 200, { item: await advanceQueue(1), queue: queuePayload() });
+    }
+    if (body.action === "prev" && queueStore.queue.items.length) {
+      return sendJson(response, 200, { item: await playQueueIndex(Math.max(0, queueStore.queue.index - 1)), queue: queuePayload() });
+    }
+    if (body.action === "play" && queueStore.queue.items.length && queueStore.queue.state === "stopped") {
+      return sendJson(response, 200, { item: await playQueueIndex(Math.max(0, queueStore.queue.index)), queue: queuePayload() });
+    }
     let command;
     if (playerCommands.has(body.action)) {
       command = `setPlayerCmd:${body.action}`;
@@ -745,7 +1366,19 @@ async function api(request, response, pathname) {
     } else {
       return sendJson(response, 400, { error: "Ugyldig kommando" });
     }
+    if (body.action === "stop") {
+      queueStore.queue.state = "stopped";
+      queueRuntime = null;
+      saveQueueStore();
+    }
     const result = await deviceCommand(command);
+    if (queueStore.queue.items.length && body.action === "pause") {
+      queueStore.queue.state = "paused";
+      saveQueueStore();
+    } else if (queueStore.queue.items.length && body.action === "play") {
+      queueStore.queue.state = "playing";
+      saveQueueStore();
+    }
     if (body.action === "stop") saveDirectPlayback(null);
     return sendJson(response, 200, result);
   }
@@ -759,8 +1392,14 @@ async function api(request, response, pathname) {
     } catch {
       return sendJson(response, 400, { error: "Indtast en gyldig http- eller https-URL" });
     }
-    const result = await deviceCommand(`setPlayerCmd:play:${streamUrl.href}`);
     const metadata = body.metadata;
+    queueStore.queue.state = "stopped";
+    queueRuntime = null;
+    saveQueueStore();
+    const deviceStatusAtStart = metadata?.title
+      ? await deviceCommand("getPlayerStatus").catch(() => null)
+      : null;
+    const result = await deviceCommand(`setPlayerCmd:play:${streamUrl.href}`);
     saveDirectPlayback(metadata?.title ? {
       Title: String(metadata.title).slice(0, 300),
       Artist: String(metadata.artist || "").slice(0, 200),
@@ -768,6 +1407,10 @@ async function api(request, response, pathname) {
       artwork: typeof metadata.artwork === "string" ? metadata.artwork : null,
       disableArtwork: metadata.disableArtwork === true,
       mediaType: metadata.mediaType === "radio" ? "radio" : "track",
+      serverId: String(metadata.serverId || "").slice(0, 100),
+      parentId: String(metadata.parentId || "").slice(0, 500),
+      folderTitle: String(metadata.folderTitle || "").slice(0, 300),
+      deviceStatusAtStart,
       startedAt: Date.now(),
     } : null);
     return sendJson(response, 200, result);
@@ -809,11 +1452,24 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
+function scheduleQueuePoll() {
+  const timer = setTimeout(async () => {
+    try {
+      await observeQueuePlayback();
+    } catch {
+      // Temporary device errors must not discard or advance the queue.
+    }
+    scheduleQueuePoll();
+  }, 2000);
+  timer.unref();
+}
+
 if (require.main === module) {
   server.listen(PORT, HOST, () => {
     console.log(`iEast Controller: http://localhost:${PORT}`);
     console.log(`Streamer: http://${config.deviceIp}`);
+    scheduleQueuePoll();
   });
 }
 
-module.exports = { currentPlayerStatus, parseMediaResponse, spotifyPlayerStatus, unknownDirectPlaybackStatus, server };
+module.exports = { currentPlayerStatus, durationMilliseconds, matchingQueueIndex, mcuFrame, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, toneCommand, toneFromDevice, unknownDirectPlaybackStatus, server };

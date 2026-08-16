@@ -6,9 +6,11 @@ The application is a dependency-free Node.js server with a responsive frontend. 
 
 ## Features
 
-- Control playback, volume, mute, seeking, and track navigation
+- Control playback, volume, mute, bass, treble, seeking, and track navigation
 - Display current track metadata and artwork
 - Search and browse one or more DLNA/UPnP media servers
+- Play complete albums sequentially or shuffled, with optional continuation to the next album folder
+- Build a persistent queue and save named playlists containing individual tracks or complete albums
 - Play and manage internet radio stations
 - Rate and sort radio stations
 - Search Spotify for tracks, albums, artists, and playlists
@@ -240,7 +242,7 @@ SPOTIFY_REDIRECT_URI=https://music.example.com/api/spotify/callback
 
 ## Using The Controller
 
-- Use the player at the top for transport, seek, volume, and mute controls.
+- Use the player at the top for transport, seek, volume, mute, bass, and treble controls.
 - Use **Search** to find music across the selected DLNA server.
 - Use **Browse** to navigate the DLNA folder hierarchy.
 - Use **Spotify** to connect an account, choose a Connect device, and search Spotify.
