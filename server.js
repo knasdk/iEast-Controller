@@ -23,7 +23,7 @@ function loadEnvFile(filePath) {
   }
 }
 
-loadEnvFile(path.join(__dirname, ".env"));
+loadEnvFile(process.env.ENV_FILE || path.join(__dirname, ".env"));
 
 const HOST = process.env.HOST || "0.0.0.0";
 const PORT = Number(process.env.PORT) || 3000;
@@ -42,6 +42,7 @@ let spotifyPlaybackCache = { expiresAt: 0, value: null };
 let playerStatusRequest = null;
 let queueRuntime = null;
 let queueBusy = false;
+let queuePollTimer = null;
 
 const defaultRadios = [
   { id: "radio-nova", name: "Nova FM", url: "http://live-bauerdk.sharp-stream.com/nova_dk_mp3", artwork: "https://www.radio.dk/300/novafm.png" },
@@ -95,7 +96,13 @@ if (SETTINGS_FILE) {
     // Persistent radio settings have not been saved yet.
   }
 }
-let config = { ...defaultConfig, radios: Array.isArray(settings.radios) ? settings.radios : defaultRadios };
+let config = {
+  ...defaultConfig,
+  deviceIp: settings.deviceIp || defaultConfig.deviceIp,
+  spotifyClientId: typeof settings.spotifyClientId === "string" ? settings.spotifyClientId : defaultConfig.spotifyClientId,
+  mediaServers: Array.isArray(settings.mediaServers) ? settings.mediaServers : defaultConfig.mediaServers,
+  radios: Array.isArray(settings.radios) ? settings.radios : defaultRadios,
+};
 let spotifyTokens = null;
 if (SPOTIFY_FILE) {
   try {
@@ -212,11 +219,12 @@ function normalizeMediaUrl(value) {
 }
 
 function normalizeConfig(input) {
-  if (!isIpAddress(input.deviceIp)) throw new Error("Indtast en gyldig iEast IP-adresse");
+  const deviceIp = String(input.deviceIp || "").trim();
+  if (!isIpAddress(deviceIp)) throw new Error("Indtast en gyldig iEast IP-adresse");
   if (!Array.isArray(input.mediaServers) || !Array.isArray(input.radios)) throw new Error("Ugyldig konfiguration");
   if (input.mediaServers.length > 20 || input.radios.length > 100) throw new Error("For mange poster");
   return {
-    deviceIp: input.deviceIp,
+    deviceIp,
     spotifyClientId: String(input.spotifyClientId || "").trim().slice(0, 100),
     mediaServers: input.mediaServers.map((server) => {
       const name = String(server.name || "").trim().slice(0, 80);
@@ -246,10 +254,11 @@ function normalizeConfig(input) {
 }
 
 function saveConfig(nextConfig) {
-  const normalized = normalizeConfig({ ...config, radios: nextConfig.radios });
-  config = { ...config, radios: normalized.radios };
+  const previousClientId = config.spotifyClientId;
+  config = normalizeConfig({ ...config, ...nextConfig });
+  if (config.spotifyClientId !== previousClientId) clearSpotifyTokens();
   if (SETTINGS_FILE) {
-    fs.writeFileSync(SETTINGS_FILE, `${JSON.stringify({ radios: config.radios }, null, 2)}\n`, { mode: 0o600 });
+    fs.writeFileSync(SETTINGS_FILE, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
     fs.chmodSync(SETTINGS_FILE, 0o600);
   }
   return config;
@@ -343,8 +352,7 @@ async function setDeviceTone(command) {
 }
 
 function publicConfig() {
-  const { spotifyClientId, ...publicValues } = config;
-  return { ...publicValues, spotifyConfigured: Boolean(spotifyClientId) };
+  return { ...config, spotifyConfigured: Boolean(config.spotifyClientId) };
 }
 
 function base64Url(buffer) {
@@ -1495,23 +1503,45 @@ const server = http.createServer(async (request, response) => {
 });
 
 function scheduleQueuePoll() {
-  const timer = setTimeout(async () => {
+  queuePollTimer = setTimeout(async () => {
     try {
       await observeQueuePlayback();
     } catch {
       // Temporary device errors must not discard or advance the queue.
     }
-    scheduleQueuePoll();
+    if (queuePollTimer) scheduleQueuePoll();
   }, 2000);
-  timer.unref();
+  queuePollTimer.unref();
 }
 
-if (require.main === module) {
-  server.listen(PORT, HOST, () => {
-    console.log(`iEast Controller: http://localhost:${PORT}`);
-    console.log(`Streamer: http://${config.deviceIp}`);
-    scheduleQueuePoll();
+function startServer() {
+  if (server.listening) return Promise.resolve(server.address());
+  return new Promise((resolve, reject) => {
+    const onError = (error) => reject(error);
+    server.once("error", onError);
+    server.listen(PORT, HOST, () => {
+      server.off("error", onError);
+      scheduleQueuePoll();
+      resolve(server.address());
+    });
   });
 }
 
-module.exports = { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, toneCommand, toneFromDevice, unknownDirectPlaybackStatus, server };
+function stopServer() {
+  if (queuePollTimer) clearTimeout(queuePollTimer);
+  queuePollTimer = null;
+  if (!server.listening) return Promise.resolve();
+  return new Promise((resolve) => {
+    server.close(resolve);
+    server.closeAllConnections?.();
+  });
+}
+
+if (require.main === module) {
+  startServer().then(() => {
+    console.log(`iEast Controller: http://localhost:${PORT}`);
+    console.log(`Streamer: http://${config.deviceIp}`);
+  });
+}
+
+module.exports = { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, normalizeConfig, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, startServer, stopServer, toneCommand, toneFromDevice, unknownDirectPlaybackStatus, server };

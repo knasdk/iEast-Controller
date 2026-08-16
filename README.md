@@ -2,7 +2,7 @@
 
 A lightweight web controller for iEast and other LinkPlay-based audio streamers. It provides one browser interface for playback controls, internet radio, local DLNA music libraries, and Spotify Connect.
 
-The application is a dependency-free Node.js server with a responsive frontend. It is intended to run on the same private network as the streamer and any DLNA servers.
+The application has a dependency-free Node.js server with a responsive frontend. It is intended to run on the same private network as the streamer and any DLNA servers.
 
 ## Features
 
@@ -16,7 +16,7 @@ The application is a dependency-free Node.js server with a responsive frontend. 
 - Search Spotify for tracks, albums, artists, and playlists
 - Browse Spotify albums and send playback to a Spotify Connect device
 - Configure private deployment values through environment variables
-- Run without a database or npm dependencies
+- Run the web server without a database or runtime npm dependencies
 
 ## Requirements
 
@@ -24,6 +24,49 @@ The application is a dependency-free Node.js server with a responsive frontend. 
 - An iEast or compatible LinkPlay streamer reachable from the server
 - Optional: a DLNA/UPnP media server such as MiniDLNA
 - Optional: a Spotify Premium account and Spotify Developer app
+
+Prebuilt desktop packages include their own runtime and do not require Node.js or a separate browser.
+
+## Desktop Packages
+
+Tagged releases produce three standalone downloads:
+
+- `iEast-Controller-<version>-x86_64.AppImage` for 64-bit Linux
+- `iEast-Controller-Setup-<version>-x64.exe` as a Windows installer
+- `iEast-Controller-Portable-<version>-x64.exe` as a Windows executable without installation
+
+Download them from the repository's GitHub Releases page. The binaries start the local controller server, display the interface in their own window, and stop the server when the window closes.
+
+On Linux, make the AppImage executable before starting it:
+
+```bash
+chmod +x iEast-Controller-*.AppImage
+./iEast-Controller-*.AppImage
+```
+
+On Windows, start either the setup program or the portable executable. Unsigned development releases may display a Windows SmartScreen warning.
+
+Open **Indstillinger** on first launch and enter the iEast IP address. DLNA servers and an optional Spotify Client ID can be configured in the same dialog. Desktop settings, queues, playlists, and Spotify tokens are stored under `~/.config/ieast-controller/state` on Linux and `%APPDATA%\ieast-controller\state` on Windows.
+
+Spotify must have this exact redirect URI registered in its Developer Dashboard:
+
+```text
+http://127.0.0.1:3000/api/spotify/callback
+```
+
+Port 3000 must be available while the desktop app runs. `IEAST_PORT` can override it, but the matching redirect URI must then also be registered with Spotify.
+
+### Building the packages
+
+Install the development dependencies, run the tests, and build for the current platform:
+
+```bash
+npm ci
+npm test
+npm run dist:linux
+```
+
+Use `npm run dist:win` on Windows. GitHub Actions builds both platforms on native runners whenever a `v*` tag is pushed; tagged builds are published automatically as a GitHub Release with SHA-256 checksums.
 
 ## Quick Start
 
@@ -136,7 +179,7 @@ git pull --ff-only
 ./scripts/install-kde.sh
 ```
 
-The `.env` file, Spotify tokens, and radio settings are preserved during Git updates.
+The `.env` file and all runtime settings are preserved during Git updates.
 
 ### Uninstalling
 
@@ -150,7 +193,7 @@ This does not delete `.env`, the repository, or the runtime data under `~/.local
 
 ## Configuration
 
-The application loads `.env` from the project root. Real environment variables take precedence over values in that file.
+The web server loads `.env` from the project root. Real environment variables take precedence over values in that file. The iEast address, media servers, and Spotify Client ID provide initial values and can subsequently be changed under **Indstillinger**.
 
 ```dotenv
 HOST=0.0.0.0
@@ -175,7 +218,7 @@ SPOTIFY_REDIRECT_URI=
 | `MEDIA_SERVERS` | No | JSON array of DLNA servers. Each entry requires `id`, `name`, and `url`. |
 | `SPOTIFY_CLIENT_ID` | For Spotify | Client ID from the Spotify Developer Dashboard. |
 | `SPOTIFY_REDIRECT_URI` | No | Fixed OAuth callback URL, normally used behind a reverse proxy. |
-| `STATE_DIR` | No | Directory for OAuth tokens and radio settings. Defaults to `.state` in the project. |
+| `STATE_DIR` | No | Directory for settings, queues, playlists, and OAuth tokens. Defaults to `.state` in the project. |
 
 Multiple DLNA servers can be configured in one line:
 
@@ -183,7 +226,7 @@ Multiple DLNA servers can be configured in one line:
 MEDIA_SERVERS=[{"id":"nas","name":"Home NAS","url":"http://192.168.1.101:8200"},{"id":"office","name":"Office library","url":"http://192.168.1.102:8200"}]
 ```
 
-The iEast address, media servers, and Spotify Client ID are intentionally read-only in the web settings because they are managed through `.env`.
+Saved values from **Indstillinger** take precedence over the corresponding `.env` defaults. Changing the Spotify Client ID disconnects the existing Spotify account because its tokens belong to the previous application.
 
 ## Spotify Setup
 
@@ -200,18 +243,19 @@ http://127.0.0.1:3000/api/spotify/callback
 ```
 
 6. Select **Web API**, accept Spotify's terms, and create the app.
-7. Copy the app's **Client ID** into `SPOTIFY_CLIENT_ID` in `.env`.
-8. Restart iEast Controller.
-9. Open the Spotify tab and select **Connect Spotify**.
+7. Copy the app's **Client ID** into **Indstillinger → Spotify Client ID**. Alternatively, set `SPOTIFY_CLIENT_ID` in `.env` before the first start.
+8. Open the Spotify tab and select **Connect Spotify**.
 
 The redirect URI in Spotify must match exactly. Spotify permits plain HTTP for loopback IP addresses such as `127.0.0.1`, but deployed domains and non-loopback addresses should use HTTPS.
 
 ## State And Persistence
 
-On first start, the application automatically creates `.state/` in the project directory. It stores:
+On first start, the web server automatically creates `.state/` in the project directory. It stores:
 
-- Radio changes and star ratings in `.state/settings.json`
+- Application settings and radio ratings in `.state/settings.json`
 - Spotify OAuth tokens in `.state/spotify.json`
+- Current direct-playback context in `.state/playback.json`
+- The queue and named playlists in `.state/queue.json`
 
 The entire `.state/` directory is excluded by `.gitignore`, so runtime data and tokens are never committed. To use a persistent volume on a deployed instance, point `STATE_DIR` at its mounted path:
 
@@ -247,7 +291,7 @@ SPOTIFY_REDIRECT_URI=https://music.example.com/api/spotify/callback
 - Use **Browse** to navigate the DLNA folder hierarchy.
 - Use **Spotify** to connect an account, choose a Connect device, and search Spotify.
 - Use the radio section to play, rate, and filter stations.
-- Open the gear icon to view environment-managed settings and edit radio stations.
+- Open the gear icon to configure the streamer, media servers, Spotify, and radio stations.
 
 ## Troubleshooting
 
@@ -304,6 +348,7 @@ git check-ignore -v .env
 │   ├── app.js         # Browser application
 │   ├── index.html     # User interface
 │   └── styles.css     # Responsive styling
+├── electron-main.js   # Cross-platform desktop shell
 ├── server.js          # HTTP API, LinkPlay, DLNA, and Spotify integration
 ├── package.json
 └── README.md

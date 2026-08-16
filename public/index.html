@@ -201,8 +201,8 @@
           <button type="button" class="close-button" id="closeSettings" aria-label="Luk">×</button>
         </div>
         <label class="field-label" for="settingsDeviceIp">iEast IP-adresse</label>
-        <input class="settings-input" id="settingsDeviceIp" inputmode="decimal" placeholder="Konfigureres i .env" disabled>
-        <small class="settings-help">Styres med <code>IEAST_IP</code> i <code>.env</code>.</small>
+        <input class="settings-input" id="settingsDeviceIp" inputmode="decimal" placeholder="192.168.1.100" required>
+        <small class="settings-help">Den lokale IPv4-adresse på din iEast-enhed.</small>
 
         <div class="spotify-client-heading">
           <label class="field-label" for="spotifyClientId">Spotify Client ID</label>
@@ -210,11 +210,12 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.5v.5"></path></svg>
           </button>
         </div>
-        <input class="settings-input" id="spotifyClientId" placeholder="Konfigureres i .env" disabled>
+        <input class="settings-input" id="spotifyClientId" placeholder="Valgfrit Client ID">
         <small class="settings-help">Redirect URI i Spotify Dashboard: <code id="spotifyRedirectUriHelp">Indlæser...</code></small>
 
         <div class="settings-section-heading">
-          <div><span>Medieservere</span><small>Styres med MEDIA_SERVERS i .env</small></div>
+          <div><span>Medieservere</span><small>Lokale DLNA/UPnP-servere</small></div>
+          <button type="button" class="text-button" id="addServer">+ Tilføj</button>
         </div>
         <div class="server-settings" id="serverSettings"></div>
 

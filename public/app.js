@@ -1388,13 +1388,9 @@ function setSpotifyRedirectUri(uri) {
 function openSettings() {
   if (!state.config) return;
   $("#settingsDeviceIp").value = state.config.deviceIp;
-  $("#spotifyClientId").value = "";
-  $("#spotifyClientId").placeholder = state.config.spotifyConfigured ? "Konfigureret via .env" : "Mangler SPOTIFY_CLIENT_ID i .env";
+  $("#spotifyClientId").value = state.config.spotifyClientId || "";
   $("#serverSettings").replaceChildren();
   state.config.mediaServers.forEach(addServerSettingsRow);
-  document.querySelectorAll("#serverSettings input, #serverSettings button").forEach((element) => {
-    element.disabled = true;
-  });
   $("#radioSettings").replaceChildren();
   state.config.radios.forEach(addRadioSettingsRow);
   const localRedirect = new URL("/api/spotify/callback", window.location.origin);
@@ -1413,6 +1409,7 @@ $("#cancelSettings").addEventListener("click", () => $("#settingsDialog").close(
 $("#openSpotifyHelp").addEventListener("click", () => $("#spotifyHelpDialog").showModal());
 $("#closeSpotifyHelp").addEventListener("click", () => $("#spotifyHelpDialog").close());
 $("#finishSpotifyHelp").addEventListener("click", () => $("#spotifyHelpDialog").close());
+$("#addServer").addEventListener("click", () => addServerSettingsRow());
 $("#addRadio").addEventListener("click", () => addRadioSettingsRow());
 $("#settingsDialog").addEventListener("click", (event) => {
   if (event.target === $("#settingsDialog")) $("#settingsDialog").close();
@@ -1422,6 +1419,11 @@ $("#spotifyHelpDialog").addEventListener("click", (event) => {
 });
 $("#settingsForm").addEventListener("submit", async (event) => {
   event.preventDefault();
+  const mediaServers = [...document.querySelectorAll(".server-setting-row")].map((row) => ({
+    id: row.dataset.id,
+    name: row.querySelector(".server-name").value,
+    url: row.querySelector(".server-url").value,
+  }));
   const radios = [...document.querySelectorAll(".radio-setting-row")].map((row) => ({
     id: row.dataset.id,
     name: row.querySelector(".radio-setting-name").value,
@@ -1432,10 +1434,14 @@ $("#settingsForm").addEventListener("submit", async (event) => {
   try {
     await saveConfiguration({
       ...state.config,
+      deviceIp: $("#settingsDeviceIp").value,
+      spotifyClientId: $("#spotifyClientId").value,
+      mediaServers,
       radios,
     });
     $("#settingsDialog").close();
-    notify("Radioindstillingerne er gemt");
+    notify("Indstillingerne er gemt");
+    state.deviceLoaded = false;
     refreshStatus();
     loadDevice();
   } catch (error) {

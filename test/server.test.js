@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, toneCommand, toneFromDevice, unknownDirectPlaybackStatus } = require("../server");
+const { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, normalizeConfig, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, toneCommand, toneFromDevice, unknownDirectPlaybackStatus } = require("../server");
 
 function soapResponse(didl) {
   const result = didl.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -39,6 +39,20 @@ test("parseMediaResponse resolves artwork for album containers", () => {
 test("durationMilliseconds parses UPnP durations", () => {
   assert.equal(durationMilliseconds("1:02:03.250"), 3723250);
   assert.equal(durationMilliseconds("unknown"), 0);
+});
+
+test("normalizeConfig validates editable desktop settings", () => {
+  const config = normalizeConfig({
+    deviceIp: " 192.168.0.45 ",
+    spotifyClientId: " client-id ",
+    mediaServers: [{ id: "music", name: " Music ", url: "192.168.0.10" }],
+    radios: [],
+  });
+
+  assert.equal(config.deviceIp, "192.168.0.45");
+  assert.equal(config.spotifyClientId, "client-id");
+  assert.equal(config.mediaServers[0].url, "http://192.168.0.10:8200");
+  assert.throws(() => normalizeConfig({ ...config, deviceIp: "not-an-ip" }), /gyldig iEast IP-adresse/);
 });
 
 test("deviceReadAttempts retries status reads but never repeats mutations", () => {
