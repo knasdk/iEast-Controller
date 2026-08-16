@@ -2,6 +2,8 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   playing: false,
   muted: false,
+  deviceLoaded: false,
+  deviceLoading: false,
   seeking: false,
   volumeChanging: false,
   toneChanging: false,
@@ -23,6 +25,7 @@ let toastTimer;
 const toneTimers = {};
 let selectionSyncTimer;
 let selectionSyncChain = Promise.resolve();
+let statusRefreshing = false;
 
 function formatTime(milliseconds) {
   const seconds = Math.max(0, Math.floor(Number(milliseconds || 0) / 1000));
@@ -426,6 +429,8 @@ function renderStatus(data) {
 }
 
 async function refreshStatus() {
+  if (statusRefreshing) return;
+  statusRefreshing = true;
   try {
     const data = await request("/api/status");
     const [tone, queue] = await Promise.all([
@@ -440,13 +445,18 @@ async function refreshStatus() {
     if (queue) renderQueue(queue);
     $("#connection").className = "connection online";
     $("#connectionText").textContent = "Forbundet";
+    if (!state.deviceLoaded) loadDevice();
   } catch (error) {
     $("#connection").className = "connection offline";
     $("#connectionText").textContent = "Ingen forbindelse";
+  } finally {
+    statusRefreshing = false;
   }
 }
 
 async function loadDevice() {
+  if (state.deviceLoading) return;
+  state.deviceLoading = true;
   try {
     const data = await request("/api/device");
     $("#deviceName").textContent = data.name || "iEast";
@@ -454,8 +464,11 @@ async function loadDevice() {
     $("#firmware").textContent = data.firmware || "–";
     $("#signal").textContent = Number.isFinite(data.signal) ? `${data.signal} dBm` : "–";
     document.title = "iEast Controller";
+    state.deviceLoaded = true;
   } catch {
     // The status poll displays connection errors; device details can remain blank.
+  } finally {
+    state.deviceLoading = false;
   }
 }
 

@@ -39,6 +39,7 @@ let directPlayback = null;
 let spotifyAuthorization = null;
 let streamerName = "";
 let spotifyPlaybackCache = { expiresAt: 0, value: null };
+let playerStatusRequest = null;
 let queueRuntime = null;
 let queueBusy = false;
 
@@ -803,7 +804,7 @@ async function playQueueIndex(index) {
     saveQueueStore();
     return null;
   }
-  const deviceStatusAtStart = await deviceCommand("getPlayerStatus").catch(() => null);
+  const deviceStatusAtStart = await getDevicePlayerStatus().catch(() => null);
   await deviceCommand(`setPlayerCmd:play:${item.url}`);
   queueStore.queue.index = index;
   queueStore.queue.state = "playing";
@@ -862,7 +863,7 @@ async function observeQueuePlayback() {
   if (queueBusy || !queueRuntime || !["playing", "paused"].includes(queueStore.queue.state)) return;
   queueBusy = true;
   try {
-    const raw = await deviceCommand("getPlayerStatus");
+    const raw = await getDevicePlayerStatus();
     if (queueRuntime.queueItemId !== queueStore.queue.items[queueStore.queue.index]?.queueItemId) return;
     const status = String(raw.status || "").toLowerCase();
     const position = Math.max(0, Number(raw.curpos) || 0);
@@ -902,8 +903,12 @@ function queuePayload() {
   return { revision: queueStore.revision, ...queueStore.queue, playlists: queueStore.playlists };
 }
 
-function matchingQueueIndex(status, queue) {
+function matchingQueueIndex(status, queue, playback) {
   if (!new Set(["10", "20", "21"]).has(String(status.mode))) return -1;
+  if (playback?.queueItemId) {
+    const ownedIndex = queue.items.findIndex((item) => item.queueItemId === playback.queueItemId);
+    if (ownedIndex >= 0) return ownedIndex;
+  }
   const title = playbackTitle(status);
   if (!title) return -1;
   const current = queue.items[queue.index];
@@ -911,13 +916,26 @@ function matchingQueueIndex(status, queue) {
   return queue.items.findIndex((item) => playbackTitle({ title: item.title }) === title);
 }
 
-function reconcileQueueStatus(status) {
-  const index = matchingQueueIndex(status, queueStore.queue);
+async function reconcileQueueStatus(status) {
+  const index = matchingQueueIndex(status, queueStore.queue, directPlayback);
   if (index < 0) return;
   const deviceState = String(status.status || "").toLowerCase();
+  const item = queueStore.queue.items[index];
+  if (deviceState === "stop" && directPlayback?.queueItemId === item.queueItemId && queueStore.queue.options.autoNext) {
+    const position = Math.max(0, Number(status.curpos) || 0);
+    if (queueAtNaturalEnd(status, { confirmed: true, maxPosition: position }, item) && !queueBusy) {
+      queueBusy = true;
+      try {
+        queueStore.queue.index = index;
+        await advanceQueue(1);
+      } finally {
+        queueBusy = false;
+      }
+    }
+    return;
+  }
   if (!["play", "playing", "pause"].includes(deviceState)) return;
   const state = deviceState === "pause" ? "paused" : "playing";
-  const item = queueStore.queue.items[index];
   const changed = queueStore.queue.index !== index || queueStore.queue.state !== state;
   queueStore.queue.index = index;
   queueStore.queue.state = state;
@@ -946,22 +964,46 @@ async function readJson(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
+function deviceReadAttempts(command) {
+  return new Set(["getPlayerStatus", "getStatusEx"]).has(command) ? 4 : 1;
+}
+
 async function deviceCommand(command) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4000);
-  try {
-    const url = `http://${config.deviceIp}/httpapi.asp?command=${encodeURIComponent(command)}`;
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) throw new Error(`Enheden svarede med HTTP ${response.status}`);
-    const text = await response.text();
+  const attempts = deviceReadAttempts(command);
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
     try {
-      return JSON.parse(text);
-    } catch {
-      return { result: text.trim() || "OK" };
+      const url = `http://${config.deviceIp}/httpapi.asp?command=${encodeURIComponent(command)}`;
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: attempt ? { Connection: "close" } : undefined,
+      });
+      if (!response.ok) throw new Error(`Enheden svarede med HTTP ${response.status}`);
+      const text = await response.text();
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { result: text.trim() || "OK" };
+      }
+    } catch (error) {
+      lastError = error;
+      if (attempt + 1 < attempts) await new Promise((resolve) => setTimeout(resolve, [250, 600, 1200][attempt]));
+    } finally {
+      clearTimeout(timeout);
     }
-  } finally {
-    clearTimeout(timeout);
   }
+  throw lastError;
+}
+
+function getDevicePlayerStatus() {
+  if (!playerStatusRequest) {
+    playerStatusRequest = deviceCommand("getPlayerStatus").finally(() => {
+      playerStatusRequest = null;
+    });
+  }
+  return playerStatusRequest;
 }
 
 async function api(request, response, pathname) {
@@ -1249,8 +1291,8 @@ async function api(request, response, pathname) {
   }
 
   if (request.method === "GET" && pathname === "/api/status") {
-    const status = await deviceCommand("getPlayerStatus");
-    reconcileQueueStatus(status);
+    const status = await getDevicePlayerStatus();
+    await reconcileQueueStatus(status);
     if (!streamerName && spotifyTokens) {
       try {
         streamerName = (await deviceCommand("getStatusEx")).DeviceName || "";
@@ -1397,7 +1439,7 @@ async function api(request, response, pathname) {
     queueRuntime = null;
     saveQueueStore();
     const deviceStatusAtStart = metadata?.title
-      ? await deviceCommand("getPlayerStatus").catch(() => null)
+      ? await getDevicePlayerStatus().catch(() => null)
       : null;
     const result = await deviceCommand(`setPlayerCmd:play:${streamUrl.href}`);
     saveDirectPlayback(metadata?.title ? {
@@ -1472,4 +1514,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { currentPlayerStatus, durationMilliseconds, matchingQueueIndex, mcuFrame, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, toneCommand, toneFromDevice, unknownDirectPlaybackStatus, server };
+module.exports = { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, toneCommand, toneFromDevice, unknownDirectPlaybackStatus, server };

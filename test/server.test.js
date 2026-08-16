@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { currentPlayerStatus, durationMilliseconds, matchingQueueIndex, mcuFrame, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, toneCommand, toneFromDevice, unknownDirectPlaybackStatus } = require("../server");
+const { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, toneCommand, toneFromDevice, unknownDirectPlaybackStatus } = require("../server");
 
 function soapResponse(didl) {
   const result = didl.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -41,6 +41,13 @@ test("durationMilliseconds parses UPnP durations", () => {
   assert.equal(durationMilliseconds("unknown"), 0);
 });
 
+test("deviceReadAttempts retries status reads but never repeats mutations", () => {
+  assert.equal(deviceReadAttempts("getPlayerStatus"), 4);
+  assert.equal(deviceReadAttempts("getStatusEx"), 4);
+  assert.equal(deviceReadAttempts("setPlayerCmd:next"), 1);
+  assert.equal(deviceReadAttempts("setPlayerCmd:vol:20"), 1);
+});
+
 test("queueTrack validates and preserves playable DLNA metadata", () => {
   const track = queueTrack({ id: "track-1", parentId: "album-1", url: "http://music/track.mp3", title: "Track", duration: "0:03:00" }, "music");
   assert.equal(track.objectId, "track-1");
@@ -59,11 +66,12 @@ test("queueAtNaturalEnd only accepts confirmed playback near the track end", () 
 test("matchingQueueIndex restores the current direct track after restart", () => {
   const queue = {
     index: 0,
-    items: [{ title: "First track" }, { title: "Georgia on My Mind" }, { title: "Last track" }],
+    items: [{ queueItemId: "first", title: "First track" }, { queueItemId: "georgia", title: "Georgia on My Mind" }, { queueItemId: "last", title: "Last track" }],
   };
   const status = { mode: "10", status: "play", Title: Buffer.from("Georgia on My Mind").toString("hex") };
   assert.equal(matchingQueueIndex(status, queue), 1);
   assert.equal(matchingQueueIndex({ ...status, mode: "31" }, queue), -1);
+  assert.equal(matchingQueueIndex({ ...status, Title: "Stale title" }, queue, { queueItemId: "last" }), 2);
 });
 
 test("shuffledQueue changes a queue with multiple items without losing entries", () => {
