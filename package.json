@@ -1,6 +1,6 @@
 {
   "name": "ieast-controller",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Local web controller for an iEast/LinkPlay streamer",
   "author": "knasdk",
@@ -8,8 +8,8 @@
   "main": "electron-main.js",
   "scripts": {
     "desktop": "electron .",
-    "dist:linux": "electron-builder --linux AppImage --x64",
-    "dist:win": "electron-builder --win --x64",
+    "dist:linux": "electron-builder --linux AppImage --x64 --publish never",
+    "dist:win": "electron-builder --win --x64 --publish never",
     "start": "node server.js",
     "test": "node --test"
   },
