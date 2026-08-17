@@ -1,4 +1,5 @@
 const $ = (selector) => document.querySelector(selector);
+const t = (key, params) => I18n.t(key, params);
 const state = {
   playing: false,
   muted: false,
@@ -57,7 +58,7 @@ function updateTrackHighlights() {
     const button = row.querySelector(".result-play");
     if (button) {
       button.dataset.action = active ? "pause" : "play";
-      button.ariaLabel = active ? "Sæt på pause" : `Afspil ${button.dataset.title}`;
+      button.ariaLabel = active ? t("player.pause") : t("player.playItem", { title: button.dataset.title });
       button.innerHTML = active
         ? '<svg viewBox="0 0 24 24"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>'
         : '<svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></svg>';
@@ -94,7 +95,7 @@ function resetArtwork() {
 async function request(url, options) {
   const response = await fetch(url, options);
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "Handlingen mislykkedes");
+  if (!response.ok) throw new Error(I18n.error(data));
   return data;
 }
 
@@ -152,8 +153,12 @@ function renderQueue(data) {
   $("#shuffleQueue").disabled = data.items.length < 2;
   $("#resetQueueOrder").disabled = !data.originalItems;
   $("#queueSummary").textContent = data.items.length
-    ? `${Math.max(0, data.index + 1)} af ${data.items.length} · ${data.state === "playing" ? "afspiller" : data.state === "paused" ? "pause" : "stoppet"}`
-    : "Køen er tom";
+    ? t("queue.summary", {
+      current: Math.max(0, data.index + 1),
+      count: data.items.length,
+      state: t(`queue.state.${data.state === "playing" ? "playing" : data.state === "paused" ? "paused" : "stopped"}`),
+    })
+    : t("queue.empty");
   $("#queueList").replaceChildren(...data.items.map((item, index) => {
     const row = document.createElement("li");
     row.classList.toggle("current", index === data.index);
@@ -171,19 +176,24 @@ function renderQueue(data) {
     number.className = "queue-number";
     number.textContent = String(index + 1);
     const title = document.createElement("strong");
-    title.textContent = item.title;
+    const displayTitle = item.titleMissing || item.title === "Ukendt titel" ? t("common.unknownTitle") : item.title;
+    title.textContent = displayTitle;
     const artist = document.createElement("span");
-    artist.textContent = item.artist || "Ukendt kunstner";
+    artist.textContent = item.artist || t("common.unknownArtist");
     const album = document.createElement("span");
     album.className = "queue-item-album";
-    album.textContent = item.album || "Ukendt album";
+    album.textContent = item.album || t("common.unknownAlbum");
     const play = document.createElement("button");
     play.className = "queue-play";
     play.type = "button";
     const isCurrent = index === data.index;
     const isPlaying = isCurrent && data.state === "playing";
     play.classList.toggle("is-pause", isPlaying);
-    play.ariaLabel = isPlaying ? `Sæt ${item.title} på pause` : isCurrent && data.state === "paused" ? `Fortsæt ${item.title}` : `Afspil ${item.title}`;
+    play.ariaLabel = isPlaying
+      ? t("player.pauseItem", { title: displayTitle })
+      : isCurrent && data.state === "paused"
+        ? t("player.resumeItem", { title: displayTitle })
+        : t("player.playItem", { title: displayTitle });
     play.innerHTML = isPlaying
       ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h4v14H7zm6 0h4v14h-4z"/></svg>'
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7V5Z"/></svg>';
@@ -224,7 +234,7 @@ function renderQueue(data) {
   if (!options.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = "Ingen gemte lister";
+    option.textContent = t("playlists.none");
     options.push(option);
   }
   $("#savedPlaylist").replaceChildren(...options);
@@ -243,21 +253,23 @@ function renderPlaylistContents() {
   $("#updatePlaylist").disabled = !playlist;
   $("#deletePlaylist").disabled = !playlist;
   $("#playPlaylist").disabled = !playlist;
-  $("#playlistSummary").textContent = playlist ? `${playlist.entries.length} ${playlist.entries.length === 1 ? "post" : "poster"}` : "Ingen gemte lister";
+  $("#playlistSummary").textContent = playlist
+    ? t("playlists.entryCount", { count: playlist.entries.length })
+    : t("playlists.none");
   $("#playlistContents").replaceChildren(...(playlist?.entries || []).map((entry, index) => {
     const row = document.createElement("li");
     const number = document.createElement("span");
     number.textContent = String(index + 1);
     const type = document.createElement("small");
-    type.textContent = entry.type === "album" ? "Album" : "Nummer";
+    type.textContent = t(entry.type === "album" ? "common.album" : "common.track");
     const details = document.createElement("div");
     const title = document.createElement("strong");
     title.textContent = entry.type === "album"
-      ? entry.album || "Ukendt album"
-      : entry.track?.title || entry.title || "Ukendt nummer";
+      ? entry.album || t("common.unknownAlbum")
+      : entry.track?.title || entry.title || t("common.unknownTrack");
     const subtitle = document.createElement("span");
     subtitle.textContent = entry.type === "album"
-      ? "Hele albummet"
+      ? t("playlists.wholeAlbum")
       : [entry.track?.artist || entry.artist, entry.track?.album || entry.album].filter(Boolean).join(" · ");
     details.append(title, subtitle);
     row.append(number, type, details);
@@ -275,7 +287,7 @@ async function loadQueue() {
 
 function updateSelectionSummary() {
   const count = state.selections.size;
-  $("#selectionSummary").textContent = count ? `${count} valgt${count === 1 ? "" : "e"}` : "Ingen valgte";
+  $("#selectionSummary").textContent = count ? t("selection.count", { count }) : t("selection.none");
   $("#playSelection").disabled = !count;
   $("#appendSelection").disabled = !count;
 }
@@ -368,7 +380,7 @@ async function updateArtwork(title, artist, sourceUrl) {
     if (state.artworkKey !== key || !url) return;
     cover.onload = () => artwork.classList.add("has-cover");
     cover.src = url;
-    cover.alt = `Cover til ${title}`;
+    cover.alt = t("player.coverAlt", { title });
     cover.hidden = false;
   } catch {
     cover.hidden = true;
@@ -381,32 +393,36 @@ function renderStatus(data) {
   document.body.classList.toggle("is-playing", state.playing);
   document.body.classList.toggle("is-muted", state.muted);
   $("#playButton").dataset.action = state.playing ? "pause" : "play";
-  $("#playButton").ariaLabel = state.playing ? "Pause" : "Afspil";
-  $("#muteButton").ariaLabel = state.muted ? "Slå lyden til" : "Slå lyden fra";
+  $("#playButton").ariaLabel = t(state.playing ? "player.pause" : "player.play");
+  $("#muteButton").ariaLabel = t(state.muted ? "player.unmute" : "player.mute");
 
-  const title = decodeMetadata(data.Title || data.title) || "Klar til musik";
-  const artist = decodeMetadata(data.Artist || data.artist || data.Album) || "Vælg en stream eller start afspilning";
+  const placeholder = data.metadataPlaceholder === "external-playback";
+  const rawTitle = placeholder ? "" : decodeMetadata(data.Title || data.title) || "";
+  const rawArtist = placeholder ? "" : decodeMetadata(data.Artist || data.artist || data.Album) || "";
+  const hasTitle = Boolean(rawTitle);
+  const title = placeholder ? t("player.externalPlayback") : rawTitle || t("player.ready");
+  const artist = placeholder ? t("player.metadataPrompt") : rawArtist || t("player.choose");
   const album = decodeMetadata(data.Album || data.album) || "";
   state.currentMedia = {
-    title,
-    artist,
+    title: rawTitle,
+    artist: rawArtist,
     album,
     albumUri: data.albumUri || "",
     spotifyUri: data.spotifyUri || "",
     serverId: data.serverId || "",
     parentId: data.parentId || "",
-    folderTitle: data.folderTitle || album || "Mappe",
+    folderTitle: data.folderTitle || album || "",
   };
-  setCurrentTrack(title === "Klar til musik" ? "" : title, artist, state.playing);
+  setCurrentTrack(rawTitle, rawArtist, state.playing);
   $("#title").textContent = title;
-  $("#title").disabled = title === "Klar til musik";
+  $("#title").disabled = !hasTitle;
   $("#artist").textContent = artist;
   $("#albumRow").hidden = !album;
   $("#album").textContent = album;
   $("#album").disabled = !album;
   if (data.disableArtwork) resetArtwork();
-  else if (title !== "Klar til musik") updateArtwork(title, artist, data.artwork);
-  $("#source").textContent = data.status === "stop" ? "IEAST STREAMER" : "AFSPILLER NU";
+  else if (hasTitle) updateArtwork(rawTitle, rawArtist, data.artwork);
+  $("#source").textContent = t(data.status === "stop" ? "player.streamer" : "player.nowPlaying");
 
   const duration = Number(data.totlen) || 0;
   const isRadio = data.mediaType === "radio" || !duration;
@@ -444,11 +460,11 @@ async function refreshStatus() {
     }
     if (queue) renderQueue(queue);
     $("#connection").className = "connection online";
-    $("#connectionText").textContent = "Forbundet";
+    $("#connectionText").textContent = t("connection.connected");
     if (!state.deviceLoaded) loadDevice();
   } catch (error) {
     $("#connection").className = "connection offline";
-    $("#connectionText").textContent = "Ingen forbindelse";
+    $("#connectionText").textContent = t("connection.offline");
   } finally {
     statusRefreshing = false;
   }
@@ -459,11 +475,11 @@ async function loadDevice() {
   state.deviceLoading = true;
   try {
     const data = await request("/api/device");
-    $("#deviceName").textContent = data.name || "iEast";
+    $("#deviceName").textContent = data.name || t("product.ieast");
     $("#deviceIp").textContent = data.ip;
     $("#firmware").textContent = data.firmware || "–";
     $("#signal").textContent = Number.isFinite(data.signal) ? `${data.signal} dBm` : "–";
-    document.title = "iEast Controller";
+    document.title = t("app.title");
     state.deviceLoaded = true;
   } catch {
     // The status poll displays connection errors; device details can remain blank.
@@ -494,19 +510,22 @@ function renderConfiguration() {
   if (servers.some((server) => server.id === selected)) $("#mediaServer").value = selected;
   $("#mediaServer").disabled = servers.length === 0;
   $("#libraryName").textContent = state.libraryMode === "spotify"
-    ? "SPOTIFY"
-    : servers.find((server) => server.id === $("#mediaServer").value)?.name || "INGEN SERVER";
+    ? t("spotify.nameUpper")
+    : servers.find((server) => server.id === $("#mediaServer").value)?.name || t("common.noServer");
   renderRadios();
 }
 
 async function loadConfiguration() {
   try {
     state.config = await request("/api/config");
+    I18n.setLocale(state.config.language);
+    I18n.apply();
     renderConfiguration();
     const params = new URLSearchParams(location.search);
-    if (params.has("spotify") || params.has("spotifyError")) {
+    if (params.has("spotify") || params.has("spotifyError") || params.has("spotifyErrorCode")) {
       setLibraryMode("spotify");
-      notify(params.get("spotifyError") || "Spotify er forbundet");
+      const spotifyError = I18n.spotifyError(params.get("spotifyErrorCode"), params.get("spotifyError"));
+      notify(spotifyError || t("spotify.connected"));
       history.replaceState({}, "", location.pathname);
     }
   } catch (error) {
@@ -567,14 +586,14 @@ async function playRadio(radio, button) {
         url: radio.url,
         metadata: {
           title: radio.name,
-          artist: "Radio",
+          artist: t("common.radio"),
           artwork: radio.artwork,
           disableArtwork: !radio.artwork,
           mediaType: "radio",
         },
       }),
     });
-    notify(`Afspiller ${radio.name}`);
+    notify(t("player.playingItem", { title: radio.name }));
     setTimeout(refreshStatus, 500);
   } catch (error) {
     notify(error.message);
@@ -585,13 +604,13 @@ async function playRadio(radio, button) {
 
 function renderRadios() {
   const radios = [...(state.config?.radios || [])].sort((a, b) =>
-    (Number(b.rating) || 0) - (Number(a.rating) || 0) || a.name.localeCompare(b.name, "da", { sensitivity: "base" })
+    (Number(b.rating) || 0) - (Number(a.rating) || 0) || a.name.localeCompare(b.name, I18n.locale, { sensitivity: "base" })
   );
   const list = $("#radioList");
   if (!radios.length) {
     const empty = document.createElement("p");
     empty.className = "empty-list";
-    empty.textContent = "Ingen gemte stationer endnu.";
+    empty.textContent = t("radio.none");
     list.replaceChildren(empty);
     return;
   }
@@ -606,13 +625,13 @@ function renderRadios() {
     info.append(name, url);
     const rating = document.createElement("div");
     rating.className = "radio-rating";
-    rating.setAttribute("aria-label", `Bedømmelse af ${radio.name}`);
+    rating.setAttribute("aria-label", t("radio.rating", { name: radio.name }));
     for (let value = 1; value <= 5; value += 1) {
       const star = document.createElement("button");
       star.type = "button";
       star.className = value <= (radio.rating || 0) ? "active" : "";
       star.textContent = "★";
-      star.ariaLabel = `${value} ${value === 1 ? "stjerne" : "stjerner"}`;
+      star.ariaLabel = t("radio.stars", { count: value });
       star.addEventListener("click", async () => {
         const nextRating = radio.rating === value ? 0 : value;
         star.disabled = true;
@@ -627,7 +646,7 @@ function renderRadios() {
     }
     const play = document.createElement("button");
     play.className = "result-play";
-    play.ariaLabel = `Afspil ${radio.name}`;
+    play.ariaLabel = t("player.playItem", { title: radio.name });
     play.innerHTML = '<svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></svg>';
     play.addEventListener("click", () => playRadio(radio, play));
     row.append(info, rating, play);
@@ -647,18 +666,18 @@ function createTrackRow(item) {
     const details = document.createElement("div");
     details.className = "result-title";
     const title = document.createElement("strong");
-    title.textContent = `${item.track ? `${item.track}. ` : ""}${item.title || "Ukendt titel"}`;
+    title.textContent = `${item.track ? `${item.track}. ` : ""}${item.title || t("common.unknownTitle")}`;
     const titleLine = document.createElement("div");
     titleLine.className = "result-title-line";
-    titleLine.append(selectionCheckbox("Vælg nummer", `track:${$("#mediaServer").value}:${item.id || item.url}`, trackQueueEntry(item)), title);
+    titleLine.append(selectionCheckbox(t("selection.track"), `track:${$("#mediaServer").value}:${item.id || item.url}`, trackQueueEntry(item)), title);
     const artist = document.createElement("span");
-    artist.textContent = item.artist || "Ukendt artist";
+    artist.textContent = item.artist || t("common.unknownArtist");
     details.append(titleLine, artist);
 
     const albumCell = document.createElement("div");
     albumCell.className = "album-cell";
     if (item.parentId && item.album) {
-      albumCell.append(selectionCheckbox("Vælg album", `album:${$("#mediaServer").value}:${item.parentId}`, albumQueueEntry(item)));
+      albumCell.append(selectionCheckbox(t("selection.album"), `album:${$("#mediaServer").value}:${item.parentId}`, albumQueueEntry(item)));
     }
     const album = document.createElement("button");
     album.className = "result-album";
@@ -675,7 +694,7 @@ function createTrackRow(item) {
     const play = document.createElement("button");
     play.className = "result-play";
     play.dataset.title = item.title;
-    play.ariaLabel = `Afspil ${item.title}`;
+    play.ariaLabel = t("player.playItem", { title: item.title });
     play.innerHTML = '<svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></svg>';
     play.addEventListener("click", async () => {
       play.disabled = true;
@@ -704,7 +723,7 @@ function createTrackRow(item) {
         });
         renderQueue(queue);
         setCurrentTrack(item.title, item.artist);
-        notify(`Afspiller ${item.title}`);
+        notify(t("player.playingItem", { title: item.title }));
         setTimeout(refreshStatus, 500);
       } catch (error) {
         notify(error.message);
@@ -727,7 +746,7 @@ function renderBrowseEntries(containers, items) {
     row.className = "browse-folder";
     const selections = document.createElement("div");
     selections.className = "selection-checks";
-    selections.append(selectionCheckbox("Album", `album:${$("#mediaServer").value}:${folder.id}`, folderQueueEntry(folder)));
+    selections.append(selectionCheckbox(t("common.album"), `album:${$("#mediaServer").value}:${folder.id}`, folderQueueEntry(folder)));
     const button = document.createElement("button");
     button.className = "browse-folder-open";
     button.type = "button";
@@ -745,9 +764,9 @@ function renderBrowseEntries(containers, items) {
     const details = document.createElement("span");
     details.className = "folder-details";
     const title = document.createElement("strong");
-    title.textContent = folder.title || "Unavngiven mappe";
+    title.textContent = folder.title || t("library.unnamedFolder");
     const count = document.createElement("small");
-    count.textContent = folder.childCount ? `${folder.childCount} elementer` : "Mappe";
+    count.textContent = folder.childCount ? t("library.folderItems", { count: folder.childCount }) : t("common.folder");
     details.append(title, count);
     const arrow = document.createElement("span");
     arrow.className = "folder-arrow";
@@ -766,7 +785,7 @@ async function browseFolder(folder, push = true) {
   const current = state.browseStack.at(-1);
   state.folderSearch = { query: "", page: 1 };
   $("#searchQuery").value = "";
-  $("#searchStatus").textContent = `Henter ${current.title}...`;
+  $("#searchStatus").textContent = t("library.fetching", { name: current.title });
   $("#pagination").hidden = true;
   try {
     const params = new URLSearchParams({ server: $("#mediaServer").value, id: current.id });
@@ -774,7 +793,7 @@ async function browseFolder(folder, push = true) {
     renderBrowseEntries(data.containers, data.items);
     $("#browsePath").textContent = state.browseStack.map((item) => item.title).join(" / ");
     $("#browseBack").disabled = state.browseStack.length <= 1;
-    $("#searchStatus").textContent = `${data.containers.length} mapper · ${data.items.length} lydfiler på ${data.server}`;
+    $("#searchStatus").textContent = t("library.browseSummary", { folders: data.containers.length, files: data.items.length, server: data.server });
   } catch (error) {
     if (push && state.browseStack.length > 1) state.browseStack.pop();
     $("#searchStatus").textContent = error.message;
@@ -791,13 +810,13 @@ function setLibraryMode(mode, load = true) {
   $("#searchTab").ariaSelected = String(mode === "search");
   $("#browseTab").ariaSelected = String(browsing);
   $("#spotifyTab").ariaSelected = String(spotify);
-  $("#libraryTitle").textContent = spotify ? "Søg på Spotify" : browsing ? "Gennemse mapper" : "Find din næste sang";
+  $("#libraryTitle").textContent = t(spotify ? "library.spotifyTitle" : browsing ? "library.browseTitle" : "library.title");
   $("#libraryName").textContent = spotify
-    ? "SPOTIFY"
-    : state.config.mediaServers.find((item) => item.id === $("#mediaServer").value)?.name || "INGEN SERVER";
+    ? t("spotify.nameUpper")
+    : state.config.mediaServers.find((item) => item.id === $("#mediaServer").value)?.name || t("common.noServer");
   $("#searchForm").hidden = spotify && !state.spotify.connected;
   $("#searchQuery").value = "";
-  $("#searchQuery").placeholder = spotify ? "Søg efter musik på Spotify" : browsing ? "Søg i denne mappe" : "Søg efter titel, artist eller album";
+  $("#searchQuery").placeholder = t(spotify ? "library.searchSpotifyPlaceholder" : browsing ? "library.searchFolderPlaceholder" : "library.searchPlaceholder");
   $("#mediaServer").hidden = spotify;
   $("#spotifyDevice").hidden = !spotify || !state.spotify.connected;
   $("#spotifyPanel").hidden = !spotify;
@@ -806,7 +825,7 @@ function setLibraryMode(mode, load = true) {
   $("#pagination").hidden = true;
   $("#searchResults").replaceChildren();
   if (browsing && load) {
-    const serverName = state.config.mediaServers.find((item) => item.id === $("#mediaServer").value)?.name || "Medieserver";
+    const serverName = state.config.mediaServers.find((item) => item.id === $("#mediaServer").value)?.name || t("common.mediaServer");
     state.browseStack = [{ id: "0", title: serverName }];
     browseFolder(state.browseStack[0], false);
   } else if (spotify && load) {
@@ -814,7 +833,7 @@ function setLibraryMode(mode, load = true) {
   } else if (load && state.search.query) {
     runSearch(state.search.query, state.search.page);
   } else {
-    $("#searchStatus").textContent = "Søg efter titel, artist eller album.";
+    $("#searchStatus").textContent = t("library.searchPrompt");
   }
 }
 
@@ -861,20 +880,20 @@ async function loadSpotifyDevices() {
     const options = data.devices.map((device) => {
       const option = document.createElement("option");
       option.value = device.id;
-      option.textContent = `${device.name}${device.active ? " · aktiv" : ""}`;
+      option.textContent = `${device.name}${device.active ? ` · ${t("spotify.active")}` : ""}`;
       option.selected = device.active;
       return option;
     });
     if (!options.length) {
       const option = document.createElement("option");
       option.value = "";
-      option.textContent = "Ingen Connect-enheder";
+      option.textContent = t("spotify.noDevices");
       options.push(option);
     }
     select.replaceChildren(...options);
   } catch (error) {
     const option = document.createElement("option");
-    option.textContent = "Kunne ikke hente enheder";
+    option.textContent = t("spotify.devicesFailed");
     select.replaceChildren(option);
     notify(error.message);
   }
@@ -889,24 +908,23 @@ async function loadSpotify() {
     $("#searchForm").hidden = !state.spotify.connected;
     $("#spotifyDevice").hidden = !state.spotify.connected;
     if (!state.spotify.configured) {
-      account.textContent = "Tilføj din Spotify Client ID under Indstillinger for at komme i gang.";
-      $("#searchStatus").textContent = `Brug redirect URI: ${state.spotify.redirectUri}`;
+      account.textContent = t("spotify.notConfigured");
+      $("#searchStatus").textContent = t("spotify.redirect", { uri: state.spotify.redirectUri });
     } else if (!state.spotify.connected) {
-      account.textContent = "Spotify er konfigureret, men kontoen er ikke forbundet.";
-      $("#searchStatus").textContent = "Forbind din Spotify Premium-konto for at søge og afspille.";
+      account.textContent = t("spotify.notConnected");
+      $("#searchStatus").textContent = t("spotify.connectPrompt");
     } else {
-      account.textContent = `Forbundet som ${state.spotify.user.name}`;
-      $("#searchStatus").textContent = "Søg efter numre, albums, artister eller playlister.";
+      account.textContent = t("spotify.connectedAs", { name: state.spotify.user.name });
+      $("#searchStatus").textContent = t("spotify.searchPrompt");
       await loadSpotifyDevices();
     }
   } catch (error) {
-    account.textContent = "Spotify kunne ikke indlæses.";
+    account.textContent = t("spotify.loadFailed");
     $("#searchStatus").textContent = error.message;
   }
 }
 
 function renderSpotifyResults(items) {
-  const typeNames = { track: "Nummer", album: "Album", artist: "Artist", playlist: "Playlist" };
   $("#searchResults").replaceChildren(...items.map((item) => {
     const row = document.createElement("article");
     row.className = "search-result spotify-result";
@@ -920,21 +938,21 @@ function renderSpotifyResults(items) {
     const title = document.createElement("strong");
     title.textContent = item.title;
     const subtitle = document.createElement("span");
-    subtitle.textContent = item.subtitle;
+    subtitle.textContent = item.subtitle || typeNames[item.type] || "";
     details.append(title, subtitle);
     const type = document.createElement("span");
     type.className = "spotify-type";
-    type.textContent = typeNames[item.type] || item.type;
+    type.textContent = t(`spotify.type.${item.type}`) || item.type;
     const detail = document.createElement("button");
     detail.type = "button";
     detail.className = "result-album";
-    detail.textContent = item.detail || "–";
+    detail.textContent = item.albumUri ? t("spotify.viewAlbum") : typeNames[item.type] || item.detail || "–";
     detail.disabled = !item.albumUri;
     if (item.albumUri) detail.addEventListener("click", () => loadSpotifyAlbum(item.albumUri));
     const play = document.createElement("button");
     play.className = "result-play";
-    play.dataset.title = `${item.title} på Spotify`;
-    play.ariaLabel = `Afspil ${item.title} på Spotify`;
+    play.dataset.title = t("spotify.onSpotify", { title: item.title });
+    play.ariaLabel = t("player.playItem", { title: play.dataset.title });
     play.innerHTML = '<svg viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></svg>';
     play.addEventListener("click", async () => {
       play.disabled = true;
@@ -956,7 +974,7 @@ function renderSpotifyResults(items) {
           body: JSON.stringify({ uri: item.uri, deviceId: $("#spotifyDevice").value }),
         });
         if (item.type === "track") setCurrentTrack(item.title, item.subtitle);
-        notify(`Afspiller ${item.title} på ${result.device}`);
+        notify(t("player.playingOn", { title: item.title, device: result.device }));
         setTimeout(refreshStatus, 700);
       } catch (error) {
         notify(error.message);
@@ -975,12 +993,14 @@ async function runSpotifySearch(query) {
   state.spotifySearch.query = query;
   button.disabled = true;
   $("#backToSearch").hidden = true;
-  $("#searchStatus").textContent = `Søger på Spotify efter “${query}”...`;
+  $("#searchStatus").textContent = t("spotify.searching", { query });
   $("#pagination").hidden = true;
   try {
     const data = await request(`/api/spotify/search?q=${encodeURIComponent(query)}`);
     renderSpotifyResults(data.items);
-    $("#searchStatus").textContent = data.items.length ? `${data.items.length} resultater fra Spotify` : `Ingen resultater for “${query}”`;
+    $("#searchStatus").textContent = data.items.length
+      ? t("spotify.results", { count: data.items.length })
+      : t("library.noResults", { query });
   } catch (error) {
     $("#searchStatus").textContent = error.message;
   } finally {
@@ -991,11 +1011,11 @@ async function runSpotifySearch(query) {
 async function loadSpotifyAlbum(uri) {
   $("#backToSearch").hidden = false;
   $("#pagination").hidden = true;
-  $("#searchStatus").textContent = "Henter album fra Spotify...";
+  $("#searchStatus").textContent = t("spotify.loadingAlbum");
   try {
     const data = await request(`/api/spotify/album?uri=${encodeURIComponent(uri)}`);
     renderSpotifyResults(data.items);
-    $("#searchStatus").textContent = `${data.album} · ${data.artist} · ${data.items.length} numre`;
+    $("#searchStatus").textContent = t("spotify.albumSummary", { album: data.album, artist: data.artist, count: data.items.length });
     $("#searchStatus").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     $("#searchStatus").textContent = error.message;
@@ -1008,7 +1028,7 @@ $("#spotifyDisconnect").addEventListener("click", async () => {
     state.spotify.connected = false;
     $("#searchResults").replaceChildren();
     await loadSpotify();
-    notify("Spotify-forbindelsen er fjernet");
+    notify(t("spotify.disconnected"));
   } catch (error) {
     notify(error.message);
   }
@@ -1019,7 +1039,7 @@ async function runSearch(query, page = 1, scrollToResults = false) {
   state.search = { query, page };
   button.disabled = true;
   $("#backToSearch").hidden = true;
-  $("#searchStatus").textContent = `Søger efter “${query}”...`;
+  $("#searchStatus").textContent = t("library.searching", { query });
   try {
     const serverId = $("#mediaServer").value;
     const params = new URLSearchParams({ q: query, server: serverId, page });
@@ -1027,8 +1047,8 @@ async function runSearch(query, page = 1, scrollToResults = false) {
     renderSearchResults(data.items);
     state.search.page = data.page;
     $("#searchStatus").textContent = data.items.length
-      ? `Side ${data.page} af ${data.pages} · ${data.total} resultater på ${data.server}`
-      : `Ingen resultater for “${query}”`;
+      ? t("library.results", { page: data.page, pages: data.pages, count: data.total, server: data.server })
+      : t("library.noResults", { query });
     renderPagination(data.page, data.pages);
     if (scrollToResults) $("#searchStatus").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
@@ -1042,12 +1062,12 @@ async function runSearch(query, page = 1, scrollToResults = false) {
 async function loadAlbum(album) {
   $("#backToSearch").hidden = false;
   $("#pagination").hidden = true;
-  $("#searchStatus").textContent = `Henter albummet “${album}”...`;
+  $("#searchStatus").textContent = t("library.loadingAlbum", { album });
   try {
     const params = new URLSearchParams({ album, server: $("#mediaServer").value });
     const data = await request(`/api/library/album?${params}`);
     renderSearchResults(data.items);
-    $("#searchStatus").textContent = `${data.album} · ${data.items.length} numre på ${data.server}`;
+    $("#searchStatus").textContent = t("library.albumSummary", { album: data.album, count: data.items.length, server: data.server });
     $("#searchStatus").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     $("#searchStatus").textContent = error.message;
@@ -1068,7 +1088,7 @@ async function openNowPlayingAlbum() {
     await loadSpotifyAlbum(media.albumUri);
   } else {
     const serverId = media.serverId || $("#mediaServer").value || state.config?.mediaServers?.[0]?.id;
-    if (!serverId) return notify("Der er ingen medieserver at åbne albummet på");
+    if (!serverId) return notify(t("library.noServerAlbum"));
     selectMediaServer(serverId);
     setLibraryMode("search", false);
     await loadAlbum(media.album);
@@ -1092,7 +1112,7 @@ async function openNowPlayingFolder() {
   }
 
   const serverId = media.serverId || $("#mediaServer").value || state.config?.mediaServers?.[0]?.id;
-  if (!serverId) return notify("Der er ingen medieserver at finde nummeret på");
+  if (!serverId) return notify(t("library.noServerTrack"));
   let parentId = media.parentId;
   let folderTitle = media.folderTitle;
   if (!parentId) {
@@ -1107,12 +1127,12 @@ async function openNowPlayingFolder() {
       return notify(error.message);
     }
   }
-  if (!parentId) return notify("Nummerets mappe kunne ikke findes");
+  if (!parentId) return notify(t("library.folderNotFound"));
 
   selectMediaServer(serverId);
   setLibraryMode("browse", false);
-  const serverName = (state.config?.mediaServers || []).find((server) => server.id === serverId)?.name || "Medieserver";
-  const folder = { id: parentId, title: folderTitle || media.album || "Mappe" };
+  const serverName = (state.config?.mediaServers || []).find((server) => server.id === serverId)?.name || t("common.mediaServer");
+  const folder = { id: parentId, title: folderTitle || media.album || t("common.folder") };
   state.browseStack = [{ id: "0", title: serverName }];
   if (folder.id !== "0") state.browseStack.push(folder);
   await browseFolder(folder, false);
@@ -1125,7 +1145,7 @@ async function runFolderSearch(query, page = 1, scrollToResults = false) {
   const button = $("#searchForm button");
   state.folderSearch = { query, page };
   button.disabled = true;
-  $("#searchStatus").textContent = `Søger i ${current.title} efter “${query}”...`;
+  $("#searchStatus").textContent = t("library.searchingFolder", { folder: current.title, query });
   try {
     const params = new URLSearchParams({
       q: query,
@@ -1137,8 +1157,8 @@ async function runFolderSearch(query, page = 1, scrollToResults = false) {
     renderSearchResults(data.items);
     state.folderSearch.page = data.page;
     $("#searchStatus").textContent = data.items.length
-      ? `Side ${data.page} af ${data.pages} · ${data.total} resultater i ${current.title}`
-      : `Ingen resultater for “${query}” i ${current.title}`;
+      ? t("library.folderResults", { page: data.page, pages: data.pages, count: data.total, folder: current.title })
+      : t("library.noFolderResults", { query, folder: current.title });
     renderPagination(data.page, data.pages);
     if (scrollToResults) $("#searchStatus").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
@@ -1204,7 +1224,7 @@ async function submitSelection(mode) {
       }),
     });
     renderQueue(queue);
-    notify(mode === "append" ? "Valget er føjet til køen" : "Afspiller valget");
+    notify(t(mode === "append" ? "queue.appended" : "queue.playingSelection"));
   } catch (error) {
     notify(error.message);
   }
@@ -1221,7 +1241,7 @@ $("#saveSelection").addEventListener("click", async () => {
     });
     $("#playlistName").value = "";
     renderQueue(data);
-    notify("Afspilningslisten er gemt");
+    notify(t("playlists.saved"));
   } catch (error) {
     notify(error.message);
   }
@@ -1264,7 +1284,7 @@ $("#updatePlaylist").addEventListener("click", async () => {
       body: JSON.stringify({ entries: [...state.selections.values()] }),
     });
     renderQueue(data);
-    notify("Afspilningslisten og den aktuelle kø er opdateret");
+    notify(t("playlists.updated"));
   } catch (error) {
     notify(error.message);
   }
@@ -1274,7 +1294,7 @@ $("#deletePlaylist").addEventListener("click", async () => {
   if (!id) return;
   try {
     renderQueue(await request(`/api/playlists/${id}`, { method: "DELETE" }));
-    notify("Afspilningslisten er slettet");
+    notify(t("playlists.deleted"));
   } catch (error) {
     notify(error.message);
   }
@@ -1309,7 +1329,7 @@ $("#browseBack").addEventListener("click", () => {
 
 $("#mediaServer").addEventListener("change", () => {
   const server = state.config.mediaServers.find((item) => item.id === $("#mediaServer").value);
-  $("#libraryName").textContent = server?.name || "INGEN SERVER";
+  $("#libraryName").textContent = server?.name || t("common.noServer");
   $("#searchResults").replaceChildren();
   $("#pagination").hidden = true;
   $("#backToSearch").hidden = true;
@@ -1317,7 +1337,9 @@ $("#mediaServer").addEventListener("change", () => {
     state.browseStack = [{ id: "0", title: server.name }];
     browseFolder(state.browseStack[0], false);
   } else {
-    $("#searchStatus").textContent = server ? `Søg blandt musikken på ${server.name}.` : "Tilføj en medieserver i indstillinger.";
+    $("#searchStatus").textContent = server
+      ? t("library.searchServer", { server: server.name })
+      : t("library.addServerPrompt");
   }
 });
 
@@ -1327,7 +1349,7 @@ function addServerSettingsRow(server = {}) {
   row.dataset.id = server.id || crypto.randomUUID();
   const name = document.createElement("input");
   name.className = "settings-input server-name";
-  name.placeholder = "Navn, fx Medieserver";
+  name.placeholder = t("settings.serverNamePlaceholder");
   name.value = server.name || "";
   name.required = true;
   const url = document.createElement("input");
@@ -1338,7 +1360,7 @@ function addServerSettingsRow(server = {}) {
   const remove = document.createElement("button");
   remove.className = "remove-button";
   remove.type = "button";
-  remove.ariaLabel = "Fjern medieserver";
+  remove.ariaLabel = t("settings.removeServer");
   remove.textContent = "×";
   remove.addEventListener("click", () => row.remove());
   row.append(name, url, remove);
@@ -1351,7 +1373,7 @@ function addRadioSettingsRow(radio = {}) {
   row.dataset.id = radio.id || crypto.randomUUID();
   const name = document.createElement("input");
   name.className = "settings-input radio-setting-name";
-  name.placeholder = "Stationsnavn";
+  name.placeholder = t("radio.namePlaceholder");
   name.value = radio.name || "";
   name.required = true;
   const url = document.createElement("input");
@@ -1363,12 +1385,12 @@ function addRadioSettingsRow(radio = {}) {
   const artwork = document.createElement("input");
   artwork.className = "settings-input radio-setting-artwork";
   artwork.type = "url";
-  artwork.placeholder = "Logo-URL (valgfri)";
+  artwork.placeholder = t("radio.logoPlaceholder");
   artwork.value = radio.artwork || "";
   const remove = document.createElement("button");
   remove.className = "remove-button";
   remove.type = "button";
-  remove.ariaLabel = `Fjern ${radio.name || "radiostation"}`;
+  remove.ariaLabel = t("radio.remove", { name: radio.name || t("radio.station") });
   remove.textContent = "×";
   remove.addEventListener("click", () => row.remove());
   row.append(name, url, artwork, remove);
@@ -1380,14 +1402,15 @@ function setSpotifyRedirectUri(uri) {
   $("#spotifyRedirectUriTutorial").textContent = uri;
   const url = new URL(uri);
   const loopback = url.hostname === "127.0.0.1" || url.hostname === "[::1]";
-  $("#spotifyRedirectNotice").textContent = url.protocol === "http:" && !loopback
-    ? "Spotify kræver HTTPS for offentlige domæner og adresser på lokalnetværket. Brug HTTPS eller konfigurér SPOTIFY_REDIRECT_URI til din offentlige HTTPS-adresse."
-    : loopback ? "Ved lokal brug kræver Spotify en loopback-IP som 127.0.0.1 frem for localhost." : "Sørg for, at denne HTTPS-adresse også står i Spotify Dashboard.";
+  $("#spotifyRedirectNotice").textContent = t(url.protocol === "http:" && !loopback
+    ? "spotify.redirectHttps"
+    : loopback ? "spotify.redirectLoopback" : "spotify.redirectDashboard");
 }
 
 function openSettings() {
   if (!state.config) return;
   $("#settingsDeviceIp").value = state.config.deviceIp;
+  $("#settingsLanguage").value = I18n.normalize(state.config.language);
   $("#spotifyClientId").value = state.config.spotifyClientId || "";
   $("#serverSettings").replaceChildren();
   state.config.mediaServers.forEach(addServerSettingsRow);
@@ -1432,15 +1455,22 @@ $("#settingsForm").addEventListener("submit", async (event) => {
     rating: state.config.radios.find((radio) => radio.id === row.dataset.id)?.rating || 0,
   }));
   try {
+    const previousLanguage = I18n.normalize(state.config.language);
+    const language = I18n.normalize($("#settingsLanguage").value);
     await saveConfiguration({
       ...state.config,
+      language,
       deviceIp: $("#settingsDeviceIp").value,
       spotifyClientId: $("#spotifyClientId").value,
       mediaServers,
       radios,
     });
     $("#settingsDialog").close();
-    notify("Indstillingerne er gemt");
+    if (language !== previousLanguage) {
+      location.reload();
+      return;
+    }
+    notify(t("settings.saved"));
     state.deviceLoaded = false;
     refreshStatus();
     loadDevice();
@@ -1454,8 +1484,14 @@ renderToneValue("bass", $("#bass").value);
 renderToneValue("treble", $("#treble").value);
 
 async function initialize() {
-  await refreshStatus();
-  await Promise.all([loadConfiguration(), loadDevice()]);
+  $("#settingsLanguage").replaceChildren(...Object.entries(I18n.localeNames).map(([value, label]) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    return option;
+  }));
+  await loadConfiguration();
+  await Promise.all([refreshStatus(), loadDevice()]);
   setInterval(refreshStatus, 2000);
 }
 

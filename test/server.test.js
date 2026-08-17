@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, normalizeConfig, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, toneCommand, toneFromDevice, unknownDirectPlaybackStatus } = require("../server");
+const { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, normalizeConfig, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, spotifySearchResults, toneCommand, toneFromDevice, unknownDirectPlaybackStatus } = require("../server");
 
 function soapResponse(didl) {
   const result = didl.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -50,9 +50,14 @@ test("normalizeConfig validates editable desktop settings", () => {
   });
 
   assert.equal(config.deviceIp, "192.168.0.45");
+  assert.equal(config.language, "da");
   assert.equal(config.spotifyClientId, "client-id");
   assert.equal(config.mediaServers[0].url, "http://192.168.0.10:8200");
+  for (const language of ["da", "en", "sv", "nb", "de"]) {
+    assert.equal(normalizeConfig({ ...config, language }).language, language);
+  }
   assert.throws(() => normalizeConfig({ ...config, deviceIp: "not-an-ip" }), /gyldig iEast IP-adresse/);
+  assert.throws(() => normalizeConfig({ ...config, language: "fr" }), /Ikke-understøttet sprog/);
 });
 
 test("deviceReadAttempts retries status reads but never repeats mutations", () => {
@@ -213,6 +218,19 @@ test("spotifyPlayerStatus uses the current track on the iEast device", () => {
   });
 });
 
+test("spotifySearchResults leaves presentation labels to the translated client", () => {
+  const results = spotifySearchResults({
+    albums: { items: [{ uri: "spotify:album:1", name: "Album", artists: [], images: [] }] },
+    artists: { items: [{ uri: "spotify:artist:1", name: "Artist", images: [] }] },
+    playlists: { items: [{ uri: "spotify:playlist:1", name: "Playlist", images: [] }] },
+  });
+
+  assert.equal(results[0].detail, "");
+  assert.equal(results[1].subtitle, "");
+  assert.equal(results[2].subtitle, "");
+  assert.equal(results[2].detail, "");
+});
+
 test("spotifyPlayerStatus ignores playback on another device", () => {
   const playback = {
     is_playing: true,
@@ -241,6 +259,7 @@ test("unknownDirectPlaybackStatus uses metadata reported by the device", () => {
     mediaType: "radio",
   });
   assert.equal(unknownDirectPlaybackStatus(status, true), status);
+  assert.equal(unknownDirectPlaybackStatus({ mode: "10", status: "play" }, false).metadataPlaceholder, "external-playback");
 });
 
 test("toneCommand creates validated iEast tone commands", () => {

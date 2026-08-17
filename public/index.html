@@ -4,23 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#11100e">
-    <title>iEast Controller</title>
+    <title data-i18n="app.title">iEast Controller</title>
     <link rel="icon" href="/ieast-controller.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <main class="shell">
       <header class="topbar">
-        <a class="brand" href="/" aria-label="iEast Controller">
+        <a class="brand" href="/" aria-label="iEast Controller" data-i18n-attr="aria-label:app.title">
           <span class="brand-mark"><i></i><i></i><i></i><i></i></span>
-          <span>iEast</span>
+          <span data-i18n="product.ieast">iEast</span>
         </a>
         <div class="top-actions">
           <div class="connection" id="connection">
             <span class="status-dot"></span>
-            <span id="connectionText">Forbinder...</span>
+            <span id="connectionText" data-i18n="connection.connecting">Forbinder...</span>
           </div>
-          <button class="settings-button" id="openSettings" aria-label="Åbn indstillinger">
+          <button class="settings-button" id="openSettings" aria-label="Åbn indstillinger" data-i18n-attr="aria-label:settings.open">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg>
           </button>
         </div>
@@ -31,7 +31,7 @@
           <div class="record">
             <img id="cover" alt="" hidden>
             <span class="record-ring"></span>
-            <span class="record-label">IE</span>
+            <span class="record-label" data-i18n="product.recordMark">IE</span>
           </div>
           <span class="tonearm" aria-hidden="true">
             <svg viewBox="0 0 100 100" preserveAspectRatio="none"><path d="M88 8 C88 48 77 78 12 92"/></svg>
@@ -39,45 +39,45 @@
         </div>
 
         <div class="player">
-          <p class="eyebrow" id="source">IEAST STREAMER</p>
-          <h1><button class="now-link now-title" id="title" type="button" disabled>Klar til musik</button></h1>
-          <p class="artist" id="artist">Vælg en stream eller start afspilning</p>
-          <p class="now-album" id="albumRow" hidden><span>Album</span><button class="now-link" id="album" type="button" disabled></button></p>
+          <p class="eyebrow" id="source" data-i18n="player.streamer">IEAST STREAMER</p>
+          <h1><button class="now-link now-title" id="title" type="button" disabled data-i18n="player.ready">Klar til musik</button></h1>
+          <p class="artist" id="artist" data-i18n="player.choose">Vælg en stream eller start afspilning</p>
+          <p class="now-album" id="albumRow" hidden><span data-i18n="common.album">Album</span><button class="now-link" id="album" type="button" disabled></button></p>
 
           <div class="timeline">
-            <input id="seek" type="range" min="0" max="100" value="0" aria-label="Position">
+            <input id="seek" type="range" min="0" max="100" value="0" aria-label="Position" data-i18n-attr="aria-label:player.position">
             <div class="times"><span id="currentTime">0:00</span><span id="duration">0:00</span></div>
           </div>
 
-          <div class="transport" aria-label="Afspilningsknapper">
-            <button class="icon-button" data-action="prev" aria-label="Forrige nummer">
+          <div class="transport" aria-label="Afspilningsknapper" data-i18n-attr="aria-label:player.controls">
+            <button class="icon-button" data-action="prev" aria-label="Forrige nummer" data-i18n-attr="aria-label:player.previous">
               <svg viewBox="0 0 24 24"><path d="M6 5v14M19 6 9 12l10 6V6Z"/></svg>
             </button>
-            <button class="play-button" id="playButton" data-action="play" aria-label="Afspil">
+            <button class="play-button" id="playButton" data-action="play" aria-label="Afspil" data-i18n-attr="aria-label:player.play">
               <svg class="play-icon" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></svg>
               <svg class="pause-icon" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM14 5h4v14h-4z"/></svg>
             </button>
-            <button class="icon-button" data-action="next" aria-label="Næste nummer">
+            <button class="icon-button" data-action="next" aria-label="Næste nummer" data-i18n-attr="aria-label:player.next">
               <svg viewBox="0 0 24 24"><path d="M18 5v14M5 6l10 6-10 6V6Z"/></svg>
             </button>
           </div>
 
           <div class="volume-row">
-            <button class="volume-button" id="muteButton" aria-label="Slå lyden fra">
+            <button class="volume-button" id="muteButton" aria-label="Slå lyden fra" data-i18n-attr="aria-label:player.mute">
               <svg class="volume-on" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Zm12.5.2a4 4 0 0 1 0 5.6M19 7a7 7 0 0 1 0 10"/></svg>
               <svg class="volume-off" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4Zm12 1 5 5m0-5-5 5"/></svg>
             </button>
-            <input id="volume" type="range" min="0" max="100" value="21" aria-label="Lydstyrke">
+            <input id="volume" type="range" min="0" max="100" value="21" aria-label="Lydstyrke" data-i18n-attr="aria-label:player.volume">
             <output id="volumeValue">21</output>
           </div>
-          <div class="tone-controls" aria-label="Tonekontroller">
+          <div class="tone-controls" aria-label="Tonekontroller" data-i18n-attr="aria-label:player.tone">
             <label class="tone-row" for="bass">
-              <span>Bas</span>
+              <span data-i18n="player.bass">Bas</span>
               <input id="bass" type="range" min="-12" max="12" step="2" value="0">
               <output id="bassValue">0</output>
             </label>
             <label class="tone-row" for="treble">
-              <span>Diskant</span>
+              <span data-i18n="player.treble">Diskant</span>
               <input id="treble" type="range" min="-12" max="12" step="2" value="0">
               <output id="trebleValue">0</output>
             </label>
@@ -87,30 +87,30 @@
 
       <section class="queue-card">
         <div class="queue-heading">
-          <div><p class="eyebrow">AFSPILNING</p><h2>Aktuel kø</h2></div>
-          <strong id="queueSummary">Køen er tom</strong>
+          <div><p class="eyebrow" data-i18n="queue.eyebrow">AFSPILNING</p><h2 data-i18n="queue.title">Aktuel kø</h2></div>
+          <strong id="queueSummary" data-i18n="queue.empty">Køen er tom</strong>
         </div>
         <div class="queue-options">
-          <label class="toggle-button"><input id="queueAutoNext" type="checkbox" checked><span>Næste nummer automatisk</span><b class="toggle-state"></b></label>
-          <label class="toggle-button"><input id="queueContinueAlbums" type="checkbox"><span>Fortsæt med næste album</span><b class="toggle-state"></b></label>
-          <div class="queue-shuffle" role="group" aria-label="Bland køens rækkefølge">
-            <button id="shuffleQueue" type="button">Bland</button>
-            <button id="resetQueueOrder" type="button">Nulstil</button>
+          <label class="toggle-button"><input id="queueAutoNext" type="checkbox" checked><span data-i18n="queue.autoNext">Næste nummer automatisk</span><b class="toggle-state"></b></label>
+          <label class="toggle-button"><input id="queueContinueAlbums" type="checkbox"><span data-i18n="queue.continueAlbums">Fortsæt med næste album</span><b class="toggle-state"></b></label>
+          <div class="queue-shuffle" role="group" aria-label="Bland køens rækkefølge" data-i18n-attr="aria-label:queue.shuffleLabel">
+            <button id="shuffleQueue" type="button" data-i18n="queue.shuffle">Bland</button>
+            <button id="resetQueueOrder" type="button" data-i18n="queue.reset">Nulstil</button>
           </div>
         </div>
         <ol class="queue-list" id="queueList"></ol>
-        <button class="queue-clear" id="clearQueue" type="button">Ryd aktuel kø</button>
+        <button class="queue-clear" id="clearQueue" type="button" data-i18n="queue.clear">Ryd aktuel kø</button>
         <section class="saved-playlists" aria-labelledby="playlistsHeading">
           <div class="saved-playlists-heading">
-            <div><p class="eyebrow">GEMT MUSIK</p><h3 id="playlistsHeading">Afspilningslister</h3></div>
-            <strong id="playlistSummary">Ingen gemte lister</strong>
+            <div><p class="eyebrow" data-i18n="playlists.eyebrow">GEMT MUSIK</p><h3 id="playlistsHeading" data-i18n="playlists.title">Afspilningslister</h3></div>
+            <strong id="playlistSummary" data-i18n="playlists.none">Ingen gemte lister</strong>
           </div>
           <div class="playlist-controls">
-            <select id="savedPlaylist" aria-label="Gemt afspilningsliste"><option value="">Ingen gemte lister</option></select>
-            <label class="toggle-button"><input id="playlistShuffle" type="checkbox"><span>Random</span><b class="toggle-state"></b></label>
-            <button id="playPlaylist" type="button">Afspil liste</button>
-            <button class="secondary-action" id="updatePlaylist" type="button">Opdater liste</button>
-            <button class="secondary-action" id="deletePlaylist" type="button">Slet liste</button>
+            <select id="savedPlaylist" aria-label="Gemt afspilningsliste" data-i18n-attr="aria-label:playlists.savedLabel"><option value="" data-i18n="playlists.none">Ingen gemte lister</option></select>
+            <label class="toggle-button"><input id="playlistShuffle" type="checkbox"><span data-i18n="playlists.shuffle">Bland</span><b class="toggle-state"></b></label>
+            <button id="playPlaylist" type="button" data-i18n="playlists.play">Afspil liste</button>
+            <button class="secondary-action" id="updatePlaylist" type="button" data-i18n="playlists.update">Opdater liste</button>
+            <button class="secondary-action" id="deletePlaylist" type="button" data-i18n="playlists.delete">Slet liste</button>
           </div>
           <ol class="playlist-contents" id="playlistContents"></ol>
         </section>
@@ -119,60 +119,60 @@
       <section class="library-card">
         <div class="library-top">
           <div>
-            <p class="eyebrow"><span id="libraryName">MEDIESERVER</span> · MUSIKBIBLIOTEK</p>
-            <h2 id="libraryTitle">Find din næste sang</h2>
-            <div class="library-tabs" role="tablist" aria-label="Biblioteksvisning">
-              <button class="active" id="searchTab" type="button" role="tab" aria-selected="true">Søg</button>
-              <button id="browseTab" type="button" role="tab" aria-selected="false">Mapper</button>
-              <button id="spotifyTab" type="button" role="tab" aria-selected="false">Spotify</button>
+            <p class="eyebrow"><span id="libraryName" data-i18n="common.mediaServerUpper">MEDIESERVER</span> · <span data-i18n="library.eyebrow">MUSIKBIBLIOTEK</span></p>
+            <h2 id="libraryTitle" data-i18n="library.title">Find din næste sang</h2>
+            <div class="library-tabs" role="tablist" aria-label="Biblioteksvisning" data-i18n-attr="aria-label:library.viewLabel">
+              <button class="active" id="searchTab" type="button" role="tab" aria-selected="true" data-i18n="library.searchTab">Søg</button>
+              <button id="browseTab" type="button" role="tab" aria-selected="false" data-i18n="library.browseTab">Mapper</button>
+              <button id="spotifyTab" type="button" role="tab" aria-selected="false" data-i18n="library.spotifyTab">Spotify</button>
             </div>
           </div>
           <div class="library-controls">
-            <label class="sr-only" for="mediaServer">Medieserver</label>
-            <select id="mediaServer" aria-label="Vælg medieserver"></select>
-            <label class="sr-only" for="spotifyDevice">Spotify Connect-enhed</label>
-            <select id="spotifyDevice" aria-label="Vælg Spotify Connect-enhed" hidden></select>
+            <label class="sr-only" for="mediaServer" data-i18n="common.mediaServer">Medieserver</label>
+            <select id="mediaServer" aria-label="Vælg medieserver" data-i18n-attr="aria-label:library.chooseServer"></select>
+            <label class="sr-only" for="spotifyDevice" data-i18n="library.chooseSpotifyDevice">Spotify Connect-enhed</label>
+            <select id="spotifyDevice" aria-label="Vælg Spotify Connect-enhed" hidden data-i18n-attr="aria-label:library.chooseSpotifyDevice"></select>
             <form id="searchForm" role="search">
-              <label class="sr-only" for="searchQuery">Søg efter musik</label>
+              <label class="sr-only" for="searchQuery" data-i18n="library.searchMusic">Søg efter musik</label>
               <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
-              <input id="searchQuery" type="search" placeholder="Søg efter titel, artist eller album" minlength="2" required>
-              <button type="submit">Søg</button>
+              <input id="searchQuery" type="search" placeholder="Søg efter titel, artist eller album" minlength="2" required data-i18n-attr="placeholder:library.searchPlaceholder">
+              <button type="submit" data-i18n="common.search">Søg</button>
             </form>
           </div>
         </div>
         <div class="spotify-panel" id="spotifyPanel" hidden>
           <div id="spotifyAccount"></div>
           <div class="spotify-actions">
-            <a class="spotify-login" id="spotifyLogin" href="/api/spotify/login">Forbind Spotify</a>
-            <button class="spotify-disconnect" id="spotifyDisconnect" type="button" hidden>Afbryd</button>
+            <a class="spotify-login" id="spotifyLogin" href="/api/spotify/login" data-i18n="spotify.connect">Forbind Spotify</a>
+            <button class="spotify-disconnect" id="spotifyDisconnect" type="button" hidden data-i18n="spotify.disconnect">Afbryd</button>
           </div>
         </div>
         <div class="browse-toolbar" id="browseToolbar" hidden>
-          <button id="browseBack" type="button">← Et niveau op</button>
+          <button id="browseBack" type="button" data-i18n="library.up">← Et niveau op</button>
           <div class="browse-path" id="browsePath"></div>
         </div>
         <div class="results-toolbar">
-          <button class="back-button" id="backToSearch" type="button" hidden>← Tilbage til søgeresultater</button>
-          <div class="search-status" id="searchStatus">Søg blandt musikken på din lokale medieserver.</div>
+          <button class="back-button" id="backToSearch" type="button" hidden data-i18n="library.backResults">← Tilbage til søgeresultater</button>
+          <div class="search-status" id="searchStatus" data-i18n="library.localPrompt">Søg blandt musikken på din lokale medieserver.</div>
         </div>
         <div class="selection-toolbar">
-          <span id="selectionSummary">Ingen valgte</span>
-          <button id="playSelection" type="button" disabled>Afspil valgte</button>
-          <button id="appendSelection" type="button" disabled>Føj til kø</button>
-          <input id="playlistName" type="text" maxlength="100" placeholder="Navn på liste" aria-label="Navn på afspilningsliste">
-          <button id="saveSelection" type="button">Gem liste</button>
+          <span id="selectionSummary" data-i18n="selection.none">Ingen valgte</span>
+          <button id="playSelection" type="button" disabled data-i18n="selection.play">Afspil valgte</button>
+          <button id="appendSelection" type="button" disabled data-i18n="selection.append">Føj til kø</button>
+          <input id="playlistName" type="text" maxlength="100" placeholder="Navn på liste" aria-label="Navn på afspilningsliste" data-i18n-attr="placeholder:playlists.namePlaceholder,aria-label:playlists.nameLabel">
+          <button id="saveSelection" type="button" data-i18n="playlists.save">Gem liste</button>
         </div>
         <div class="search-results" id="searchResults"></div>
-        <nav class="pagination" id="pagination" aria-label="Sider" hidden></nav>
+        <nav class="pagination" id="pagination" aria-label="Sider" hidden data-i18n-attr="aria-label:library.pages"></nav>
       </section>
 
       <section class="lower-grid">
         <article class="radio-card">
           <div class="radio-heading">
             <div>
-              <p class="eyebrow">RADIO</p>
-              <h2>Mine stationer</h2>
-              <p>Start en gemt radiostation med ét klik. Stationer administreres under Indstillinger.</p>
+              <p class="eyebrow" data-i18n="radio.eyebrow">RADIO</p>
+              <h2 data-i18n="radio.title">Mine stationer</h2>
+              <p data-i18n="radio.description">Start en gemt radiostation med ét klik. Stationer administreres under Indstillinger.</p>
             </div>
           </div>
           <div class="radio-list" id="radioList"></div>
@@ -181,12 +181,12 @@
         <aside class="device-card">
           <div class="device-heading">
             <span class="device-icon"><i></i><i></i><i></i></span>
-            <div><p class="eyebrow">ENHED</p><h2 id="deviceName">iEast</h2></div>
+            <div><p class="eyebrow" data-i18n="device.eyebrow">ENHED</p><h2 id="deviceName">iEast</h2></div>
           </div>
           <dl>
-            <div><dt>IP-adresse</dt><dd id="deviceIp">–</dd></div>
-            <div><dt>Wi-Fi signal</dt><dd id="signal">–</dd></div>
-            <div><dt>Firmware</dt><dd id="firmware">–</dd></div>
+            <div><dt data-i18n="device.ip">IP-adresse</dt><dd id="deviceIp">–</dd></div>
+            <div><dt data-i18n="device.signal">Wi-Fi signal</dt><dd id="signal">–</dd></div>
+            <div><dt data-i18n="device.firmware">Firmware</dt><dd id="firmware">–</dd></div>
           </dl>
         </aside>
       </section>
@@ -197,37 +197,41 @@
     <dialog class="settings-dialog" id="settingsDialog">
       <form id="settingsForm">
         <div class="dialog-heading">
-          <div><p class="eyebrow">KONFIGURATION</p><h2>Indstillinger</h2></div>
-          <button type="button" class="close-button" id="closeSettings" aria-label="Luk">×</button>
+          <div><p class="eyebrow" data-i18n="settings.eyebrow">KONFIGURATION</p><h2 data-i18n="settings.title">Indstillinger</h2></div>
+          <button type="button" class="close-button" id="closeSettings" aria-label="Luk" data-i18n-attr="aria-label:common.close">×</button>
         </div>
-        <label class="field-label" for="settingsDeviceIp">iEast IP-adresse</label>
+        <label class="field-label" for="settingsDeviceIp" data-i18n="settings.deviceIp">iEast IP-adresse</label>
         <input class="settings-input" id="settingsDeviceIp" inputmode="decimal" placeholder="192.168.1.100" required>
-        <small class="settings-help">Den lokale IPv4-adresse på din iEast-enhed.</small>
+        <small class="settings-help" data-i18n="settings.deviceIpHelp">Den lokale IPv4-adresse på din iEast-enhed.</small>
+
+        <label class="field-label settings-language-label" for="settingsLanguage" data-i18n="settings.language">Sprog</label>
+        <select class="settings-input" id="settingsLanguage"></select>
+        <small class="settings-help" data-i18n="settings.languageHelp">Sproget gemmes sammen med konfigurationen.</small>
 
         <div class="spotify-client-heading">
-          <label class="field-label" for="spotifyClientId">Spotify Client ID</label>
-          <button type="button" class="info-button" id="openSpotifyHelp" aria-label="Vis vejledning til Spotify Client ID" aria-haspopup="dialog" aria-controls="spotifyHelpDialog">
+          <label class="field-label" for="spotifyClientId" data-i18n="settings.spotifyClientId">Spotify Client ID</label>
+          <button type="button" class="info-button" id="openSpotifyHelp" aria-label="Vis vejledning til Spotify Client ID" aria-haspopup="dialog" aria-controls="spotifyHelpDialog" data-i18n-attr="aria-label:spotify.helpButton">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v6M12 7.5v.5"></path></svg>
           </button>
         </div>
-        <input class="settings-input" id="spotifyClientId" placeholder="Valgfrit Client ID">
-        <small class="settings-help">Redirect URI i Spotify Dashboard: <code id="spotifyRedirectUriHelp">Indlæser...</code></small>
+        <input class="settings-input" id="spotifyClientId" placeholder="Valgfrit Client ID" data-i18n-attr="placeholder:settings.spotifyClientIdOptional">
+        <small class="settings-help"><span data-i18n="settings.redirectHelp">Redirect URI i Spotify Dashboard:</span> <code id="spotifyRedirectUriHelp" data-i18n="common.loading">Indlæser...</code></small>
 
         <div class="settings-section-heading">
-          <div><span>Medieservere</span><small>Lokale DLNA/UPnP-servere</small></div>
-          <button type="button" class="text-button" id="addServer">+ Tilføj</button>
+          <div><span data-i18n="settings.mediaServers">Medieservere</span><small data-i18n="settings.mediaServersHelp">Lokale DLNA/UPnP-servere</small></div>
+          <button type="button" class="text-button" id="addServer" data-i18n="common.add">+ Tilføj</button>
         </div>
         <div class="server-settings" id="serverSettings"></div>
 
         <div class="settings-section-heading">
-          <div><span>Radiostationer</span><small>Direkte MP3- eller AAC-stream og valgfrit logo</small></div>
-          <button type="button" class="text-button" id="addRadio">+ Tilføj</button>
+          <div><span data-i18n="settings.radios">Radiostationer</span><small data-i18n="settings.radiosHelp">Direkte MP3- eller AAC-stream og valgfrit logo</small></div>
+          <button type="button" class="text-button" id="addRadio" data-i18n="common.add">+ Tilføj</button>
         </div>
         <div class="radio-settings" id="radioSettings"></div>
 
         <div class="dialog-actions">
-          <button type="button" class="secondary-button" id="cancelSettings">Annuller</button>
-          <button type="submit" class="primary-button">Gem indstillinger</button>
+          <button type="button" class="secondary-button" id="cancelSettings" data-i18n="common.cancel">Annuller</button>
+          <button type="submit" class="primary-button" data-i18n="settings.save">Gem indstillinger</button>
         </div>
       </form>
     </dialog>
@@ -235,44 +239,45 @@
     <dialog class="settings-dialog spotify-help-dialog" id="spotifyHelpDialog" aria-labelledby="spotifyHelpTitle">
       <div class="spotify-help-content">
         <div class="dialog-heading">
-          <div><p class="eyebrow">SPOTIFY OPSÆTNING</p><h2 id="spotifyHelpTitle">Sådan får du et Client ID</h2></div>
-          <button type="button" class="close-button" id="closeSpotifyHelp" aria-label="Luk vejledning">×</button>
+          <div><p class="eyebrow" data-i18n="spotify.helpEyebrow">SPOTIFY OPSÆTNING</p><h2 id="spotifyHelpTitle" data-i18n="spotify.helpTitle">Sådan får du et Client ID</h2></div>
+          <button type="button" class="close-button" id="closeSpotifyHelp" aria-label="Luk vejledning" data-i18n-attr="aria-label:spotify.closeHelp">×</button>
         </div>
 
         <ol class="tutorial-steps">
           <li>
-            <strong>Åbn Spotify Dashboard</strong>
-            <p>Gå til <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer">developer.spotify.com/dashboard</a>, og log ind med den Spotify-konto, du vil bruge.</p>
+            <strong data-i18n="spotify.help1Title">Åbn Spotify Dashboard</strong>
+            <p><span data-i18n="spotify.help1Before">Gå til</span> <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener noreferrer">developer.spotify.com/dashboard</a><span data-i18n="spotify.help1After">, og log ind med den Spotify-konto, du vil bruge.</span></p>
           </li>
           <li>
-            <strong>Opret en app</strong>
-            <p>Klik på <b>Create app</b>. Giv appen et valgfrit navn, for eksempel <code>iEast Controller</code>, og skriv en kort beskrivelse.</p>
+            <strong data-i18n="spotify.help2Title">Opret en app</strong>
+            <p data-i18n="spotify.help2Text">Klik på Create app. Giv appen et valgfrit navn, for eksempel iEast Controller, og skriv en kort beskrivelse.</p>
           </li>
           <li>
-            <strong>Tilføj Redirect URI</strong>
-            <p>Indsæt adressen herunder præcist som vist. Den følger den adresse, du bruger til at åbne controlleren.</p>
-            <code class="tutorial-code" id="spotifyRedirectUriTutorial">Indlæser...</code>
+            <strong data-i18n="spotify.help3Title">Tilføj Redirect URI</strong>
+            <p data-i18n="spotify.help3Text">Indsæt adressen herunder præcist som vist. Den følger den adresse, du bruger til at åbne controlleren.</p>
+            <code class="tutorial-code" id="spotifyRedirectUriTutorial" data-i18n="common.loading">Indlæser...</code>
             <p class="tutorial-notice" id="spotifyRedirectNotice"></p>
           </li>
           <li>
-            <strong>Vælg Web API</strong>
-            <p>Markér <b>Web API</b> under de API'er eller SDK'er, appen skal bruge, acceptér Spotifys vilkår, og opret appen.</p>
+            <strong data-i18n="spotify.help4Title">Vælg Web API</strong>
+            <p data-i18n="spotify.help4Text">Markér Web API under de API'er eller SDK'er, appen skal bruge, acceptér Spotifys vilkår, og opret appen.</p>
           </li>
           <li>
-            <strong>Kopiér Client ID</strong>
-            <p>Åbn appens <b>Settings</b> eller <b>Basic Information</b>, kopiér værdien ved <b>Client ID</b>, og indsæt den i feltet bag denne vejledning. Du skal ikke bruge Client Secret.</p>
+            <strong data-i18n="spotify.help5Title">Kopiér Client ID</strong>
+            <p data-i18n="spotify.help5Text">Åbn appens Settings eller Basic Information, kopiér værdien ved Client ID, og indsæt den i feltet bag denne vejledning. Du skal ikke bruge Client Secret.</p>
           </li>
           <li>
-            <strong>Gem og forbind</strong>
-            <p>Klik på <b>Gem indstillinger</b>. Gå derefter til Spotify i controlleren, og klik på <b>Forbind Spotify</b>.</p>
+            <strong data-i18n="spotify.help6Title">Gem og forbind</strong>
+            <p data-i18n="spotify.help6Text">Klik på Gem indstillinger. Gå derefter til Spotify i controlleren, og klik på Forbind Spotify.</p>
           </li>
         </ol>
 
         <div class="dialog-actions">
-          <button type="button" class="primary-button" id="finishSpotifyHelp">Forstået</button>
+          <button type="button" class="primary-button" id="finishSpotifyHelp" data-i18n="spotify.understood">Forstået</button>
         </div>
       </div>
     </dialog>
+    <script src="/i18n.js" defer></script>
     <script src="/app.js" defer></script>
   </body>
 </html>

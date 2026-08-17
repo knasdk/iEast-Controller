@@ -82,7 +82,9 @@ const defaultConfig = {
   mediaServers: mediaServersFromEnv(),
   radios: defaultRadios,
   spotifyClientId: process.env.SPOTIFY_CLIENT_ID || "",
+  language: "da",
 };
+const supportedLanguages = new Set(["da", "en", "sv", "nb", "de"]);
 
 if (STATE_DIR) {
   fs.mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
@@ -100,6 +102,7 @@ let config = {
   ...defaultConfig,
   deviceIp: settings.deviceIp || defaultConfig.deviceIp,
   spotifyClientId: typeof settings.spotifyClientId === "string" ? settings.spotifyClientId : defaultConfig.spotifyClientId,
+  language: supportedLanguages.has(settings.language) ? settings.language : defaultConfig.language,
   mediaServers: Array.isArray(settings.mediaServers) ? settings.mediaServers : defaultConfig.mediaServers,
   radios: Array.isArray(settings.radios) ? settings.radios : defaultRadios,
 };
@@ -144,7 +147,48 @@ const contentTypes = {
 
 const playerCommands = new Set(["play", "pause", "stop", "next", "prev"]);
 
+const errorCodes = new Map([
+  ["Ugyldig konfiguration", "INVALID_CONFIG"],
+  ["Indtast en gyldig iEast IP-adresse", "INVALID_DEVICE_IP"],
+  ["Ikke-understøttet sprog", "INVALID_LANGUAGE"],
+  ["For mange poster", "TOO_MANY_ENTRIES"],
+  ["Alle medieservere skal have et navn", "MEDIA_SERVER_NAME_REQUIRED"],
+  ["Alle radiolinks skal have et navn", "RADIO_NAME_REQUIRED"],
+  ["Spotify er ikke forbundet", "SPOTIFY_NOT_CONNECTED"],
+  ["Medieserveren findes ikke længere", "MEDIA_SERVER_NOT_FOUND"],
+  ["Søg med mindst 2 tegn", "SEARCH_QUERY_INVALID"],
+  ["Ugyldigt Spotify-album", "SPOTIFY_ALBUM_INVALID"],
+  ["Ugyldigt Spotify-indhold", "SPOTIFY_CONTENT_INVALID"],
+  ["iEast er ikke synlig i Spotify Connect. Åbn Spotify-appen og vælg enheden én gang.", "SPOTIFY_DEVICE_UNAVAILABLE"],
+  ["Den valgte iEast-enhed kan ikke aflæse tonekontrol", "TONE_UNSUPPORTED"],
+  ["Ugyldig toneindstilling", "TONE_INVALID"],
+  ["Vælg mindst ét nummer eller album", "SELECTION_REQUIRED"],
+  ["Valget indeholder ingen afspillelige numre", "SELECTION_NOT_PLAYABLE"],
+  ["Ugyldigt nummer i køen", "QUEUE_ITEM_INVALID"],
+  ["Afspilningslisten skal have et navn", "PLAYLIST_NAME_REQUIRED"],
+  ["Afspilningslisten er tom", "PLAYLIST_EMPTY"],
+  ["Afspilningslisten indeholder ingen afspillelige numre", "PLAYLIST_NOT_PLAYABLE"],
+  ["Afspilningslisten findes ikke", "PLAYLIST_NOT_FOUND"],
+  ["Ugyldige metadata", "METADATA_INVALID"],
+  ["Ugyldig mappe", "FOLDER_INVALID"],
+  ["Tilføj først en medieserver i indstillinger", "MEDIA_SERVER_REQUIRED"],
+  ["Ugyldigt album", "ALBUM_INVALID"],
+  ["Ugyldig kommando", "COMMAND_INVALID"],
+  ["Indtast en gyldig http- eller https-URL", "URL_INVALID"],
+  ["Ugyldig medieserver-adresse", "URL_INVALID"],
+  ["Request body is too large", "REQUEST_TOO_LARGE"],
+  ["Ikke fundet", "NOT_FOUND"],
+]);
+
+function errorCodeFor(message) {
+  if (errorCodes.has(message)) return errorCodes.get(message);
+  if (/^Ugyldigt radiolink/.test(message) || /^Ugyldigt radiologo/.test(message)) return "URL_INVALID";
+  if (/svarede med HTTP/.test(message) || /svarede ikke/.test(message)) return "CONNECTION_UNAVAILABLE";
+  return "ACTION_FAILED";
+}
+
 function sendJson(response, status, payload) {
+  if (payload?.error && !payload.errorCode) payload = { ...payload, errorCode: errorCodeFor(payload.error) };
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   response.end(JSON.stringify(payload));
 }
@@ -221,10 +265,13 @@ function normalizeMediaUrl(value) {
 function normalizeConfig(input) {
   const deviceIp = String(input.deviceIp || "").trim();
   if (!isIpAddress(deviceIp)) throw new Error("Indtast en gyldig iEast IP-adresse");
+  const language = input.language == null ? "da" : String(input.language);
+  if (!supportedLanguages.has(language)) throw new Error("Ikke-understøttet sprog");
   if (!Array.isArray(input.mediaServers) || !Array.isArray(input.radios)) throw new Error("Ugyldig konfiguration");
   if (input.mediaServers.length > 20 || input.radios.length > 100) throw new Error("For mange poster");
   return {
     deviceIp,
+    language,
     spotifyClientId: String(input.spotifyClientId || "").trim().slice(0, 100),
     mediaServers: input.mediaServers.map((server) => {
       const name = String(server.name || "").trim().slice(0, 80);
@@ -258,7 +305,9 @@ function saveConfig(nextConfig) {
   config = normalizeConfig({ ...config, ...nextConfig });
   if (config.spotifyClientId !== previousClientId) clearSpotifyTokens();
   if (SETTINGS_FILE) {
-    fs.writeFileSync(SETTINGS_FILE, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+    const temporary = `${SETTINGS_FILE}.tmp`;
+    fs.writeFileSync(temporary, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+    fs.renameSync(temporary, SETTINGS_FILE);
     fs.chmodSync(SETTINGS_FILE, 0o600);
   }
   return config;
@@ -408,14 +457,14 @@ function spotifySearchResults(data) {
     })),
     ...(data.albums?.items || []).map((item) => ({
       type: "album", uri: item.uri, title: item.name, subtitle: item.artists.map((artist) => artist.name).join(", "),
-      detail: "Vis album", albumUri: item.uri, artwork: image(item.images),
+      detail: "", albumUri: item.uri, artwork: image(item.images),
     })),
     ...(data.artists?.items || []).map((item) => ({
-      type: "artist", uri: item.uri, title: item.name, subtitle: "Artist", detail: "", artwork: image(item.images),
+      type: "artist", uri: item.uri, title: item.name, subtitle: "", detail: "", artwork: image(item.images),
     })),
     ...(data.playlists?.items || []).filter(Boolean).map((item) => ({
-      type: "playlist", uri: item.uri, title: item.name, subtitle: item.owner?.display_name || "Playlist",
-      detail: "Playlist", artwork: image(item.images),
+      type: "playlist", uri: item.uri, title: item.name, subtitle: item.owner?.display_name || "",
+      detail: "", artwork: image(item.images),
     })),
   ];
 }
@@ -563,6 +612,7 @@ function unknownDirectPlaybackStatus(status, hasPlaybackMetadata) {
     ...status,
     Title: "Ekstern afspilning",
     Artist: "Vælg nummeret i controlleren for at vise metadata",
+    metadataPlaceholder: "external-playback",
     Album: "",
     artwork: null,
     disableArtwork: true,
@@ -756,6 +806,7 @@ function queueTrack(item, serverId, originAlbum = null) {
     parentId: String(item.parentId || "").slice(0, 500),
     url: url.href,
     title: String(item.title || "Ukendt titel").slice(0, 300),
+    titleMissing: !item.title,
     artist: String(item.artist || "").slice(0, 200),
     album: String(item.album || originAlbum?.title || "").slice(0, 300),
     artwork: typeof item.artwork === "string" ? item.artwork : null,
@@ -1016,7 +1067,7 @@ function getDevicePlayerStatus() {
 
 async function api(request, response, pathname) {
   if (request.method === "GET" && pathname === "/api/spotify/login") {
-    if (!config.spotifyClientId) return redirect(response, "/?spotifyError=Tilfoej%20Spotify%20Client%20ID%20i%20Indstillinger");
+    if (!config.spotifyClientId) return redirect(response, "/?spotifyErrorCode=CLIENT_ID_REQUIRED");
     const verifier = base64Url(crypto.randomBytes(64));
     const state = base64Url(crypto.randomBytes(24));
     const redirectUri = getSpotifyRedirectUri(request);
@@ -1037,10 +1088,10 @@ async function api(request, response, pathname) {
 
   if (request.method === "GET" && pathname === "/api/spotify/callback") {
     const params = new URL(request.url, "http://localhost").searchParams;
-    if (params.get("error")) return redirect(response, `/?spotifyError=${encodeURIComponent(params.get("error"))}`);
+    if (params.get("error")) return redirect(response, `/?spotifyErrorCode=${params.get("error") === "access_denied" ? "ACCESS_DENIED" : "TOKEN_EXCHANGE_FAILED"}`);
     if (!spotifyAuthorization || params.get("state") !== spotifyAuthorization.state || Date.now() - spotifyAuthorization.createdAt > 600_000) {
       spotifyAuthorization = null;
-      return redirect(response, "/?spotifyError=Ugyldig%20eller%20udloebet%20Spotify-login");
+      return redirect(response, "/?spotifyErrorCode=INVALID_STATE");
     }
     try {
       const token = await exchangeSpotifyToken({
@@ -1055,7 +1106,7 @@ async function api(request, response, pathname) {
       return redirect(response, "/?spotify=connected");
     } catch (error) {
       spotifyAuthorization = null;
-      return redirect(response, `/?spotifyError=${encodeURIComponent(error.message)}`);
+      return redirect(response, "/?spotifyErrorCode=TOKEN_EXCHANGE_FAILED");
     }
   }
 
@@ -1495,9 +1546,10 @@ const server = http.createServer(async (request, response) => {
     if (pathname.startsWith("/api/")) await api(request, response, pathname);
     else serveStatic(response, pathname);
   } catch (error) {
-    const unavailable = error.name === "AbortError" || error.cause?.code;
+    const unavailable = error.name === "AbortError" || error.code || error.cause?.code;
     sendJson(response, unavailable ? 503 : 500, {
       error: unavailable ? `Kan ikke få kontakt til den valgte enhed eller server` : error.message,
+      errorCode: unavailable ? "CONNECTION_UNAVAILABLE" : errorCodeFor(error.message),
     });
   }
 });
@@ -1544,4 +1596,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, normalizeConfig, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, startServer, stopServer, toneCommand, toneFromDevice, unknownDirectPlaybackStatus, server };
+module.exports = { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, normalizeConfig, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, spotifySearchResults, startServer, stopServer, toneCommand, toneFromDevice, unknownDirectPlaybackStatus, server };

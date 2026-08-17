@@ -15,6 +15,7 @@ The application has a dependency-free Node.js server with a responsive frontend.
 - Rate and sort radio stations
 - Search Spotify for tracks, albums, artists, and playlists
 - Browse Spotify albums and send playback to a Spotify Connect device
+- Switch the complete interface between Danish, English, Swedish, Norwegian, and German
 - Configure private deployment values through environment variables
 - Run the web server without a database or runtime npm dependencies
 
@@ -46,7 +47,7 @@ chmod +x iEast-Controller-*.AppImage
 
 On Windows, start either the setup program or the portable executable. Unsigned development releases may display a Windows SmartScreen warning.
 
-Open **Indstillinger** on first launch and enter the iEast IP address. DLNA servers and an optional Spotify Client ID can be configured in the same dialog. Desktop settings, queues, playlists, and Spotify tokens are stored under `~/.config/ieast-controller/state` on Linux and `%APPDATA%\ieast-controller\state` on Windows.
+Open **Indstillinger** on first launch and enter the iEast IP address. The interface language, DLNA servers, and an optional Spotify Client ID can be configured in the same dialog. Desktop settings, queues, playlists, and Spotify tokens are stored under `~/.config/ieast-controller/state` on Linux and `%APPDATA%\ieast-controller\state` on Windows.
 
 Spotify must have this exact redirect URI registered in its Developer Dashboard:
 
@@ -346,6 +347,7 @@ git check-ignore -v .env
 ├── .env.example       # Safe configuration template
 ├── public/
 │   ├── app.js         # Browser application
+│   ├── i18n.js        # Built-in interface translations
 │   ├── index.html     # User interface
 │   └── styles.css     # Responsive styling
 ├── electron-main.js   # Cross-platform desktop shell
