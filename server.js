@@ -83,8 +83,10 @@ const defaultConfig = {
   radios: defaultRadios,
   spotifyClientId: process.env.SPOTIFY_CLIENT_ID || "",
   language: "da",
+  theme: "dark",
 };
 const supportedLanguages = new Set(["da", "en", "sv", "nb", "de"]);
+const supportedThemes = new Set(["dark", "light"]);
 
 if (STATE_DIR) {
   fs.mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 });
@@ -103,6 +105,7 @@ let config = {
   deviceIp: settings.deviceIp || defaultConfig.deviceIp,
   spotifyClientId: typeof settings.spotifyClientId === "string" ? settings.spotifyClientId : defaultConfig.spotifyClientId,
   language: supportedLanguages.has(settings.language) ? settings.language : defaultConfig.language,
+  theme: supportedThemes.has(settings.theme) ? settings.theme : defaultConfig.theme,
   mediaServers: Array.isArray(settings.mediaServers) ? settings.mediaServers : defaultConfig.mediaServers,
   radios: Array.isArray(settings.radios) ? settings.radios : defaultRadios,
 };
@@ -151,6 +154,7 @@ const errorCodes = new Map([
   ["Ugyldig konfiguration", "INVALID_CONFIG"],
   ["Indtast en gyldig iEast IP-adresse", "INVALID_DEVICE_IP"],
   ["Ikke-understøttet sprog", "INVALID_LANGUAGE"],
+  ["Ikke-understøttet tema", "INVALID_THEME"],
   ["For mange poster", "TOO_MANY_ENTRIES"],
   ["Alle medieservere skal have et navn", "MEDIA_SERVER_NAME_REQUIRED"],
   ["Alle radiolinks skal have et navn", "RADIO_NAME_REQUIRED"],
@@ -267,11 +271,14 @@ function normalizeConfig(input) {
   if (!isIpAddress(deviceIp)) throw new Error("Indtast en gyldig iEast IP-adresse");
   const language = input.language == null ? "da" : String(input.language);
   if (!supportedLanguages.has(language)) throw new Error("Ikke-understøttet sprog");
+  const theme = input.theme == null ? "dark" : String(input.theme);
+  if (!supportedThemes.has(theme)) throw new Error("Ikke-understøttet tema");
   if (!Array.isArray(input.mediaServers) || !Array.isArray(input.radios)) throw new Error("Ugyldig konfiguration");
   if (input.mediaServers.length > 20 || input.radios.length > 100) throw new Error("For mange poster");
   return {
     deviceIp,
     language,
+    theme,
     spotifyClientId: String(input.spotifyClientId || "").trim().slice(0, 100),
     mediaServers: input.mediaServers.map((server) => {
       const name = String(server.name || "").trim().slice(0, 80);

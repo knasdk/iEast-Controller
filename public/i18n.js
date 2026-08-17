@@ -27,6 +27,8 @@
     "connection.offline": ["Ingen forbindelse", "No connection", "Ingen anslutning", "Ingen tilkobling", "Keine Verbindung"],
     "connection.status": ["Status", "Status", "Status", "Status", "Status"],
     "settings.open": ["Åbn indstillinger", "Open settings", "Öppna inställningar", "Åpne innstillinger", "Einstellungen öffnen"],
+    "theme.switchToLight": ["Skift til lyst tema", "Switch to light theme", "Byt till ljust tema", "Bytt til lyst tema", "Zum hellen Design wechseln"],
+    "theme.switchToDark": ["Skift til mørkt tema", "Switch to dark theme", "Byt till mörkt tema", "Bytt til mørkt tema", "Zum dunklen Design wechseln"],
     "player.ready": ["Klar til musik", "Ready for music", "Redo för musik", "Klar for musikk", "Bereit für Musik"],
     "player.choose": ["Vælg en stream eller start afspilning", "Choose a stream or start playback", "Välj en ström eller starta uppspelning", "Velg en strøm eller start avspilling", "Stream wählen oder Wiedergabe starten"],
     "player.streamer": ["IEAST STREAMER", "IEAST STREAMER", "IEAST STREAMER", "IEAST STREAMER", "IEAST STREAMER"],
@@ -243,6 +245,7 @@
   localeOrder.forEach((currentLocale, index) => {
     catalogs[currentLocale]["error.REQUEST_TOO_LARGE"] = ["Forespørgslen er for stor", "The request is too large", "Begäran är för stor", "Forespørselen er for stor", "Die Anfrage ist zu groß"][index];
     catalogs[currentLocale]["error.INVALID_LANGUAGE"] = ["Ikke-understøttet sprog", "Unsupported language", "Språket stöds inte", "Språket støttes ikke", "Nicht unterstützte Sprache"][index];
+    catalogs[currentLocale]["error.INVALID_THEME"] = ["Ikke-understøttet tema", "Unsupported theme", "Temat stöds inte", "Temaet støttes ikke", "Nicht unterstütztes Design"][index];
     catalogs[currentLocale]["error.CONNECTION_UNAVAILABLE"] = ["Kan ikke få kontakt til den valgte enhed eller server", "Cannot reach the selected device or server", "Det går inte att nå den valda enheten eller servern", "Kan ikke kontakte den valgte enheten eller serveren", "Das ausgewählte Gerät oder der Server ist nicht erreichbar"][index];
     catalogs[currentLocale]["error.ACTION_FAILED"] = rows["error.actionFailed"][index];
   });

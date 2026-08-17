@@ -41,6 +41,8 @@ test("translations support locale normalization, plurals, and API errors", () =>
   assert.equal(i18n.normalize("de-DE"), "de");
 
   i18n.setLocale("en");
+  assert.equal(i18n.t("theme.switchToLight"), "Switch to light theme");
+  assert.equal(i18n.t("theme.switchToDark"), "Switch to dark theme");
   assert.equal(i18n.t("playlists.entryCount", { count: 1 }), "1 entry");
   assert.equal(i18n.t("playlists.entryCount", { count: 2 }), "2 entries");
   assert.equal(i18n.error({ errorCode: "INVALID_DEVICE_IP" }), "Enter a valid iEast IP address");

@@ -16,6 +16,7 @@ The application has a dependency-free Node.js server with a responsive frontend.
 - Search Spotify for tracks, albums, artists, and playlists
 - Browse Spotify albums and send playback to a Spotify Connect device
 - Switch the complete interface between Danish, English, Swedish, Norwegian, and German
+- Toggle between persistent dark and light interface themes
 - Configure private deployment values through environment variables
 - Run the web server without a database or runtime npm dependencies
 

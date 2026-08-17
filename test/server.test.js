@@ -51,13 +51,18 @@ test("normalizeConfig validates editable desktop settings", () => {
 
   assert.equal(config.deviceIp, "192.168.0.45");
   assert.equal(config.language, "da");
+  assert.equal(config.theme, "dark");
   assert.equal(config.spotifyClientId, "client-id");
   assert.equal(config.mediaServers[0].url, "http://192.168.0.10:8200");
   for (const language of ["da", "en", "sv", "nb", "de"]) {
     assert.equal(normalizeConfig({ ...config, language }).language, language);
   }
+  for (const theme of ["dark", "light"]) {
+    assert.equal(normalizeConfig({ ...config, theme }).theme, theme);
+  }
   assert.throws(() => normalizeConfig({ ...config, deviceIp: "not-an-ip" }), /gyldig iEast IP-adresse/);
   assert.throws(() => normalizeConfig({ ...config, language: "fr" }), /Ikke-understøttet sprog/);
+  assert.throws(() => normalizeConfig({ ...config, theme: "system" }), /Ikke-understøttet tema/);
 });
 
 test("deviceReadAttempts retries status reads but never repeats mutations", () => {

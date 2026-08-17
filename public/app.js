@@ -28,6 +28,29 @@ let selectionSyncTimer;
 let selectionSyncChain = Promise.resolve();
 let statusRefreshing = false;
 
+function storedTheme() {
+  try {
+    const theme = localStorage.getItem("ieast-theme");
+    return ["light", "dark"].includes(theme) ? theme : null;
+  } catch {
+    return null;
+  }
+}
+
+function applyTheme(value) {
+  const theme = value === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = theme;
+  $("meta[name='theme-color']").content = theme === "light" ? "#f4f1e8" : "#11100e";
+  $("#themeToggle").ariaLabel = t(theme === "light" ? "theme.switchToDark" : "theme.switchToLight");
+  $("#themeToggle").setAttribute("aria-pressed", String(theme === "light"));
+  try {
+    localStorage.setItem("ieast-theme", theme);
+  } catch {
+    // The server setting still persists the theme when local storage is unavailable.
+  }
+  return theme;
+}
+
 function formatTime(milliseconds) {
   const seconds = Math.max(0, Math.floor(Number(milliseconds || 0) / 1000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -489,11 +512,13 @@ async function loadDevice() {
 }
 
 async function saveConfiguration(nextConfig) {
-  state.config = await request("/api/config", {
+  const savedConfig = await request("/api/config", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(nextConfig),
   });
+  state.config = { ...nextConfig, ...savedConfig };
+  if (!["light", "dark"].includes(savedConfig.theme)) state.config.theme = nextConfig.theme;
   renderConfiguration();
   return state.config;
 }
@@ -520,6 +545,8 @@ async function loadConfiguration() {
     state.config = await request("/api/config");
     I18n.setLocale(state.config.language);
     I18n.apply();
+    state.config.theme = applyTheme(storedTheme() || state.config.theme);
+    $("#themeToggle").disabled = false;
     renderConfiguration();
     const params = new URLSearchParams(location.search);
     if (params.has("spotify") || params.has("spotifyError") || params.has("spotifyErrorCode")) {
@@ -535,6 +562,21 @@ async function loadConfiguration() {
 
 document.querySelectorAll("[data-action]").forEach((button) => {
   button.addEventListener("click", () => command(button.dataset.action));
+});
+
+$("#themeToggle").addEventListener("click", async () => {
+  if (!state.config) return;
+  const previous = state.config.theme;
+  const next = applyTheme(previous === "light" ? "dark" : "light");
+  $("#themeToggle").disabled = true;
+  try {
+    await saveConfiguration({ ...state.config, theme: next });
+  } catch (error) {
+    state.config.theme = applyTheme(previous);
+    notify(error.message);
+  } finally {
+    $("#themeToggle").disabled = false;
+  }
 });
 
 $("#muteButton").addEventListener("click", () => command(state.muted ? "unmute" : "mute"));
