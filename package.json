@@ -1,6 +1,6 @@
 {
   "name": "ieast-controller",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "Local web controller for an iEast/LinkPlay streamer",
   "author": "knasdk",
