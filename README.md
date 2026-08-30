@@ -68,7 +68,7 @@ npm test
 npm run dist:linux
 ```
 
-Use `npm run dist:win` on Windows. GitHub Actions builds both platforms on native runners whenever a `v*` tag is pushed; tagged builds are published automatically as a GitHub Release with SHA-256 checksums.
+Use `npm run dist:win` on Windows. GitHub Actions builds both platforms on native runners for every push to `master` and updates one rolling `development` prerelease with SHA-256 checksums. A pushed `v*` tag creates a permanent stable versioned GitHub Release.
 
 ## Quick Start
 

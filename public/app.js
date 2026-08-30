@@ -980,7 +980,7 @@ function renderSpotifyResults(items) {
     const title = document.createElement("strong");
     title.textContent = item.title;
     const subtitle = document.createElement("span");
-    subtitle.textContent = item.subtitle || typeNames[item.type] || "";
+    subtitle.textContent = item.subtitle || t(`spotify.type.${item.type}`) || "";
     details.append(title, subtitle);
     const type = document.createElement("span");
     type.className = "spotify-type";
@@ -988,7 +988,7 @@ function renderSpotifyResults(items) {
     const detail = document.createElement("button");
     detail.type = "button";
     detail.className = "result-album";
-    detail.textContent = item.albumUri ? t("spotify.viewAlbum") : typeNames[item.type] || item.detail || "–";
+    detail.textContent = item.albumUri ? t("spotify.viewAlbum") : t(`spotify.type.${item.type}`) || item.detail || "–";
     detail.disabled = !item.albumUri;
     if (item.albumUri) detail.addEventListener("click", () => loadSpotifyAlbum(item.albumUri));
     const play = document.createElement("button");
