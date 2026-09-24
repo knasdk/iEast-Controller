@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, normalizeConfig, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, spotifySearchResults, toneCommand, toneFromDevice, unknownDirectPlaybackStatus } = require("../server");
+const { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, normalizeConfig, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, spotifyQueueTrack, spotifySearchResults, toneCommand, toneFromDevice, unknownDirectPlaybackStatus } = require("../server");
 
 function soapResponse(didl) {
   const result = didl.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -79,6 +79,14 @@ test("queueTrack validates and preserves playable DLNA metadata", () => {
   assert.equal(queueTrack({ url: "file:///tmp/track.mp3" }, "music"), null);
 });
 
+test("spotifyQueueTrack validates and preserves Spotify metadata", () => {
+  const track = spotifyQueueTrack({ uri: "spotify:track:abc123", title: "Track", artist: "Artist", album: "Album", durationMs: 180000 });
+  assert.equal(track.type, "spotify");
+  assert.equal(track.objectId, "spotify:track:abc123");
+  assert.equal(track.durationMs, 180000);
+  assert.equal(spotifyQueueTrack({ uri: "spotify:album:abc123" }), null);
+});
+
 test("queueAtNaturalEnd only accepts confirmed playback near the track end", () => {
   const item = { durationMs: 180000 };
   assert.equal(queueAtNaturalEnd({ status: "stop", totlen: 180000 }, { confirmed: true, maxPosition: 176000 }, item), true);
@@ -96,6 +104,11 @@ test("matchingQueueIndex restores the current direct track after restart", () =>
   assert.equal(matchingQueueIndex(status, queue), 1);
   assert.equal(matchingQueueIndex({ ...status, mode: "31" }, queue), -1);
   assert.equal(matchingQueueIndex({ ...status, Title: "Stale title" }, queue, { queueItemId: "last" }), 2);
+});
+
+test("matchingQueueIndex follows the current Spotify URI", () => {
+  const queue = { index: 0, items: [{ uri: "spotify:track:first" }, { uri: "spotify:track:second" }] };
+  assert.equal(matchingQueueIndex({ spotifyUri: "spotify:track:second", status: "play" }, queue), 1);
 });
 
 test("shuffledQueue changes a queue with multiple items without losing entries", () => {

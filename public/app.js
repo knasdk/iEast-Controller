@@ -234,7 +234,7 @@ function renderQueue(data) {
           renderQueue(await request("/api/queue/play-index", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ index }),
+            body: JSON.stringify({ index, deviceId: item.type === "spotify" ? $("#spotifyDevice").value : undefined }),
           }));
         }
         setTimeout(refreshStatus, 500);
@@ -264,7 +264,9 @@ function renderQueue(data) {
   if (data.playlists.some((playlist) => playlist.id === selected)) $("#savedPlaylist").value = selected;
   renderPlaylistContents();
   if (!state.selectionsInitialized) {
-    const entries = data.items.map((track) => ({ type: "track", serverId: track.serverId, track }));
+    const entries = data.items.map((track) => track.type === "spotify"
+      ? { type: "spotifyTrack", track }
+      : { type: "track", serverId: track.serverId, track });
     if (entries.length) selectPlaylistEntries(entries);
     else if (data.playlists[0]) selectPlaylistEntries(data.playlists[0].entries);
     state.selectionsInitialized = true;
@@ -284,14 +286,14 @@ function renderPlaylistContents() {
     const number = document.createElement("span");
     number.textContent = String(index + 1);
     const type = document.createElement("small");
-    type.textContent = t(entry.type === "album" ? "common.album" : "common.track");
+    type.textContent = t(["album", "spotifyAlbum"].includes(entry.type) ? "common.album" : "common.track");
     const details = document.createElement("div");
     const title = document.createElement("strong");
-    title.textContent = entry.type === "album"
+    title.textContent = ["album", "spotifyAlbum"].includes(entry.type)
       ? entry.album || t("common.unknownAlbum")
       : entry.track?.title || entry.title || t("common.unknownTrack");
     const subtitle = document.createElement("span");
-    subtitle.textContent = entry.type === "album"
+    subtitle.textContent = ["album", "spotifyAlbum"].includes(entry.type)
       ? t("playlists.wholeAlbum")
       : [entry.track?.artist || entry.artist, entry.track?.album || entry.album].filter(Boolean).join(" · ");
     details.append(title, subtitle);
@@ -362,6 +364,8 @@ function selectionCheckbox(label, key, entry) {
 
 function selectionEntryKey(entry) {
   if (entry.type === "album") return `album:${entry.serverId}:${entry.albumId}`;
+  if (entry.type === "spotifyAlbum") return `spotify-album:${entry.uri}`;
+  if (entry.type === "spotifyTrack") return `spotify-track:${entry.track?.uri || entry.uri}`;
   const track = entry.track || entry;
   return `track:${entry.serverId || track.serverId}:${track.objectId || track.id || track.url}`;
 }
@@ -380,6 +384,20 @@ function trackQueueEntry(item) {
 
 function albumQueueEntry(item) {
   return { type: "album", serverId: $("#mediaServer").value, albumId: item.parentId, album: item.album };
+}
+
+function spotifyTrackQueueEntry(item) {
+  return {
+    type: "spotifyTrack",
+    track: {
+      uri: item.uri, title: item.title, artist: item.subtitle, album: item.detail,
+      artwork: item.artwork, durationMs: item.durationMs, track: item.track,
+    },
+  };
+}
+
+function spotifyAlbumQueueEntry(item) {
+  return { type: "spotifyAlbum", uri: item.albumUri || item.uri, album: item.detail || item.title, artist: item.subtitle, artwork: item.artwork };
 }
 
 function folderQueueEntry(folder) {
@@ -843,6 +861,10 @@ async function browseFolder(folder, push = true) {
 }
 
 function setLibraryMode(mode, load = true) {
+  if (state.libraryMode !== mode) {
+    state.selections.clear();
+    updateSelectionSummary();
+  }
   state.libraryMode = mode;
   const browsing = mode === "browse";
   const spotify = mode === "spotify";
@@ -966,7 +988,7 @@ async function loadSpotify() {
   }
 }
 
-function renderSpotifyResults(items) {
+function renderSpotifyResults(items, albumEntry = null) {
   $("#searchResults").replaceChildren(...items.map((item) => {
     const row = document.createElement("article");
     row.className = "search-result spotify-result";
@@ -978,19 +1000,33 @@ function renderSpotifyResults(items) {
     const details = document.createElement("div");
     details.className = "result-title";
     const title = document.createElement("strong");
-    title.textContent = item.title;
+    title.textContent = `${item.track ? `${item.disc > 1 ? `${item.disc}.` : ""}${item.track}. ` : ""}${item.title}`;
+    const titleLine = document.createElement("div");
+    titleLine.className = "result-title-line";
+    if (item.type === "track") {
+      titleLine.append(selectionCheckbox(t("selection.track"), `spotify-track:${item.uri}`, spotifyTrackQueueEntry(item)));
+    } else if (item.type === "album") {
+      titleLine.append(selectionCheckbox(t("selection.album"), `spotify-album:${item.uri}`, spotifyAlbumQueueEntry(item)));
+    }
+    titleLine.append(title);
     const subtitle = document.createElement("span");
     subtitle.textContent = item.subtitle || t(`spotify.type.${item.type}`) || "";
-    details.append(title, subtitle);
+    details.append(titleLine, subtitle);
     const type = document.createElement("span");
     type.className = "spotify-type";
     type.textContent = t(`spotify.type.${item.type}`) || item.type;
+    const albumCell = document.createElement("div");
+    albumCell.className = "album-cell";
+    if (item.type === "track" && item.albumUri) {
+      albumCell.append(selectionCheckbox(t("selection.album"), `spotify-album:${item.albumUri}`, spotifyAlbumQueueEntry(item)));
+    }
     const detail = document.createElement("button");
     detail.type = "button";
     detail.className = "result-album";
     detail.textContent = item.albumUri ? t("spotify.viewAlbum") : t(`spotify.type.${item.type}`) || item.detail || "–";
     detail.disabled = !item.albumUri;
     if (item.albumUri) detail.addEventListener("click", () => loadSpotifyAlbum(item.albumUri));
+    albumCell.append(detail);
     const play = document.createElement("button");
     play.className = "result-play";
     play.dataset.title = t("spotify.onSpotify", { title: item.title });
@@ -1010,13 +1046,20 @@ function renderSpotifyResults(items) {
           setTimeout(refreshStatus, 250);
           return;
         }
-        const result = await request("/api/spotify/play", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ uri: item.uri, deviceId: $("#spotifyDevice").value }),
-        });
+        const result = albumEntry && item.type === "track"
+          ? await request("/api/queue", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ entries: [albumEntry], startObjectId: item.uri, play: true, shuffle: false, deviceId: $("#spotifyDevice").value }),
+          })
+          : await request("/api/spotify/play", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ uri: item.uri, deviceId: $("#spotifyDevice").value }),
+          });
+        if (albumEntry) renderQueue(result);
         if (item.type === "track") setCurrentTrack(item.title, item.subtitle);
-        notify(t("player.playingOn", { title: item.title, device: result.device }));
+        notify(albumEntry ? t("player.playingItem", { title: item.title }) : t("player.playingOn", { title: item.title, device: result.device }));
         setTimeout(refreshStatus, 700);
       } catch (error) {
         notify(error.message);
@@ -1024,7 +1067,7 @@ function renderSpotifyResults(items) {
         play.disabled = false;
       }
     });
-    row.append(cover, details, detail, type, play);
+    row.append(cover, details, albumCell, type, play);
     return row;
   }));
   updateTrackHighlights();
@@ -1056,7 +1099,8 @@ async function loadSpotifyAlbum(uri) {
   $("#searchStatus").textContent = t("spotify.loadingAlbum");
   try {
     const data = await request(`/api/spotify/album?uri=${encodeURIComponent(uri)}`);
-    renderSpotifyResults(data.items);
+    const albumEntry = { type: "spotifyAlbum", uri, album: data.album, artist: data.artist, artwork: data.items[0]?.artwork || null };
+    renderSpotifyResults(data.items, albumEntry);
     $("#searchStatus").textContent = t("spotify.albumSummary", { album: data.album, artist: data.artist, count: data.items.length });
     $("#searchStatus").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
@@ -1263,6 +1307,7 @@ async function submitSelection(mode) {
         mode,
         play: mode !== "append",
         shuffle: false,
+        deviceId: $("#spotifyDevice").value,
       }),
     });
     renderQueue(queue);
@@ -1295,7 +1340,7 @@ $("#playPlaylist").addEventListener("click", async () => {
     renderQueue(await request(`/api/playlists/${id}/play`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shuffle: $("#playlistShuffle").checked }),
+      body: JSON.stringify({ shuffle: $("#playlistShuffle").checked, deviceId: $("#spotifyDevice").value }),
     }));
   } catch (error) {
     notify(error.message);

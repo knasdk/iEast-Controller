@@ -823,6 +823,50 @@ function queueTrack(item, serverId, originAlbum = null) {
   };
 }
 
+function spotifyQueueTrack(item, originAlbum = null) {
+  if (!/^spotify:track:[A-Za-z0-9]+$/.test(item?.uri || "")) return null;
+  return {
+    queueItemId: crypto.randomUUID(),
+    type: "spotify",
+    uri: item.uri,
+    objectId: item.uri,
+    title: String(item.title || "Ukendt titel").slice(0, 300),
+    titleMissing: !item.title,
+    artist: String(item.artist || item.subtitle || "").slice(0, 200),
+    album: String(item.album || originAlbum?.title || "").slice(0, 300),
+    artwork: typeof item.artwork === "string" ? item.artwork : null,
+    durationMs: Math.max(0, Number(item.durationMs) || 0),
+    track: Number(item.track) || null,
+    originAlbum,
+  };
+}
+
+async function expandSpotifyAlbum(entry, shuffle = false) {
+  const match = String(entry.uri || "").match(/^spotify:album:([A-Za-z0-9]+)$/);
+  if (!match) return [];
+  const album = await spotifyFetch(`/albums/${match[1]}`);
+  const tracks = [...album.tracks.items];
+  let next = album.tracks.next;
+  while (next && tracks.length < 200) {
+    const nextUrl = new URL(next);
+    const page = await spotifyFetch(`${nextUrl.pathname.replace(/^\/v1/, "")}${nextUrl.search}`);
+    tracks.push(...page.items);
+    next = page.next;
+  }
+  const originAlbum = { id: album.uri, title: album.name };
+  const artwork = album.images?.[0]?.url || null;
+  const items = tracks.map((track) => spotifyQueueTrack({
+    uri: track.uri,
+    title: track.name,
+    artist: track.artists.map((artist) => artist.name).join(", "),
+    album: album.name,
+    artwork,
+    durationMs: track.duration_ms,
+    track: track.track_number,
+  }, originAlbum)).filter(Boolean);
+  return shuffle ? shuffled(items) : items;
+}
+
 async function expandAlbum(entry, shuffle = false) {
   const server = configuredMediaServer(entry.serverId);
   if (!server) throw new Error("Medieserveren findes ikke længere");
@@ -850,6 +894,11 @@ async function resolveQueueEntries(entries, shuffle = false) {
   const tracks = [];
   for (const entry of entries.slice(0, 2000)) {
     if (entry?.type === "album") tracks.push(...await expandAlbum(entry, shuffle));
+    else if (entry?.type === "spotifyAlbum") tracks.push(...await expandSpotifyAlbum(entry, shuffle));
+    else if (entry?.type === "spotifyTrack") {
+      const track = spotifyQueueTrack(entry.track || entry);
+      if (track) tracks.push(track);
+    }
     else if (entry?.type === "track") {
       const track = queueTrack(entry.track || entry, entry.serverId || entry.track?.serverId);
       if (track) tracks.push(track);
@@ -859,7 +908,47 @@ async function resolveQueueEntries(entries, shuffle = false) {
   return tracks.slice(0, 10_000);
 }
 
-async function playQueueIndex(index) {
+function queueEntryFromTrack(track) {
+  return track.type === "spotify"
+    ? { type: "spotifyTrack", track }
+    : { type: "track", serverId: track.serverId, track };
+}
+
+async function spotifyDevice(deviceId) {
+  const devices = await spotifyFetch("/me/player/devices");
+  const device = devices.devices.find((item) => item.id === deviceId) || devices.devices.find((item) => item.is_active);
+  if (!device) throw new Error("iEast er ikke synlig i Spotify Connect. Åbn Spotify-appen og vælg enheden én gang.");
+  return device;
+}
+
+async function playSpotifyItems(items, deviceId) {
+  const device = await spotifyDevice(deviceId);
+  await spotifyFetch("/me/player", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ device_ids: [device.id], play: false }),
+  });
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  await spotifyFetch(`/me/player/play?device_id=${encodeURIComponent(device.id)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uris: items.slice(0, 100).map((item) => item.uri) }),
+  });
+  spotifyPlaybackCache.expiresAt = 0;
+  return device;
+}
+
+async function appendSpotifyItems(items, deviceId) {
+  const device = await spotifyDevice(deviceId);
+  for (const item of items.slice(0, 100)) {
+    await spotifyFetch(`/me/player/queue?uri=${encodeURIComponent(item.uri)}&device_id=${encodeURIComponent(device.id)}`, {
+      method: "POST",
+    });
+  }
+  spotifyPlaybackCache.expiresAt = 0;
+}
+
+async function playQueueIndex(index, deviceId) {
   const item = queueStore.queue.items[index];
   if (!item) {
     await deviceCommand("setPlayerCmd:stop").catch(() => null);
@@ -869,6 +958,16 @@ async function playQueueIndex(index) {
     saveDirectPlayback(null);
     saveQueueStore();
     return null;
+  }
+  if (item.type === "spotify") {
+    const spotifyItems = queueStore.queue.items.slice(index).filter((candidate) => candidate.type === "spotify");
+    await playSpotifyItems(spotifyItems, deviceId);
+    queueStore.queue.index = index;
+    queueStore.queue.state = "playing";
+    queueRuntime = null;
+    saveDirectPlayback(null);
+    saveQueueStore();
+    return item;
   }
   const deviceStatusAtStart = await getDevicePlayerStatus().catch(() => null);
   await deviceCommand(`setPlayerCmd:play:${item.url}`);
@@ -970,6 +1069,7 @@ function queuePayload() {
 }
 
 function matchingQueueIndex(status, queue, playback) {
+  if (status.spotifyUri) return queue.items.findIndex((item) => item.uri === status.spotifyUri);
   if (!new Set(["10", "20", "21"]).has(String(status.mode))) return -1;
   if (playback?.queueItemId) {
     const ownedIndex = queue.items.findIndex((item) => item.queueItemId === playback.queueItemId);
@@ -1005,7 +1105,7 @@ async function reconcileQueueStatus(status) {
   const changed = queueStore.queue.index !== index || queueStore.queue.state !== state;
   queueStore.queue.index = index;
   queueStore.queue.state = state;
-  if (!queueRuntime || queueRuntime.queueItemId !== item.queueItemId) {
+  if (item.type !== "spotify" && (!queueRuntime || queueRuntime.queueItemId !== item.queueItemId)) {
     const position = Math.max(0, Number(status.curpos) || 0);
     queueRuntime = {
       queueItemId: item.queueItemId,
@@ -1174,11 +1274,14 @@ async function api(request, response, pathname) {
       items: tracks.map((track) => ({
         type: "track",
         uri: track.uri,
-        title: `${album.total_tracks > 1 ? `${track.disc_number > 1 ? `${track.disc_number}.` : ""}${track.track_number}. ` : ""}${track.name}`,
+        title: track.name,
         subtitle: track.artists.map((artist) => artist.name).join(", "),
         detail: album.name,
         albumUri: album.uri,
         artwork,
+        durationMs: track.duration_ms,
+        track: track.track_number,
+        disc: track.disc_number,
       })),
     });
   }
@@ -1188,21 +1291,22 @@ async function api(request, response, pathname) {
     if (!/^spotify:(track|album|artist|playlist):[A-Za-z0-9]+$/.test(body.uri || "")) {
       return sendJson(response, 400, { error: "Ugyldigt Spotify-indhold" });
     }
-    const devices = await spotifyFetch("/me/player/devices");
-    const device = devices.devices.find((item) => item.id === body.deviceId) || devices.devices.find((item) => item.is_active);
-    if (!device) return sendJson(response, 409, { error: "iEast er ikke synlig i Spotify Connect. Åbn Spotify-appen og vælg enheden én gang." });
-    await spotifyFetch("/me/player", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ device_ids: [device.id], play: false }),
-    });
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    const playBody = body.uri.startsWith("spotify:track:") ? { uris: [body.uri] } : { context_uri: body.uri };
-    await spotifyFetch(`/me/player/play?device_id=${encodeURIComponent(device.id)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(playBody),
-    });
+    let device;
+    if (body.uri.startsWith("spotify:track:")) device = await playSpotifyItems([{ uri: body.uri }], body.deviceId);
+    else {
+      device = await spotifyDevice(body.deviceId);
+      await spotifyFetch("/me/player", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device_ids: [device.id], play: false }),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await spotifyFetch(`/me/player/play?device_id=${encodeURIComponent(device.id)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ context_uri: body.uri }),
+      });
+    }
     saveDirectPlayback(null);
     return sendJson(response, 200, { playing: true, device: device.name });
   }
@@ -1256,13 +1360,15 @@ async function api(request, response, pathname) {
     if (body.mode === "append") {
       queueStore.queue.items.push(...tracks);
       if (queueStore.queue.originalItems) queueStore.queue.originalItems.push(...tracks);
+      const spotifyTracks = tracks.filter((track) => track.type === "spotify");
+      if (spotifyTracks.length) await appendSpotifyItems(spotifyTracks, body.deviceId);
     }
     else {
       queueStore.queue = { ...emptyQueue(), options: { ...queueStore.queue.options, shuffle }, items: tracks };
       queueRuntime = null;
     }
     saveQueueStore();
-    if (body.play !== false && body.mode !== "append") await playQueueIndex(0);
+    if (body.play !== false && body.mode !== "append") await playQueueIndex(0, body.deviceId);
     return sendJson(response, 200, queuePayload());
   }
 
@@ -1298,7 +1404,7 @@ async function api(request, response, pathname) {
     if (!Number.isInteger(body.index) || body.index < 0 || body.index >= queueStore.queue.items.length) {
       return sendJson(response, 400, { error: "Ugyldigt nummer i køen" });
     }
-    await playQueueIndex(body.index);
+    await playQueueIndex(body.index, body.deviceId);
     return sendJson(response, 200, queuePayload());
   }
 
@@ -1308,7 +1414,7 @@ async function api(request, response, pathname) {
     if (!name) return sendJson(response, 400, { error: "Afspilningslisten skal have et navn" });
     const entries = Array.isArray(body.entries) && body.entries.length
       ? body.entries.slice(0, 2000)
-      : queueStore.queue.items.map((track) => ({ type: "track", serverId: track.serverId, track }));
+      : queueStore.queue.items.map(queueEntryFromTrack);
     if (!entries.length) return sendJson(response, 400, { error: "Afspilningslisten er tom" });
     const tracks = await resolveQueueEntries(entries, false);
     if (!tracks.length) return sendJson(response, 409, { error: "Afspilningslisten indeholder ingen afspillelige numre" });
@@ -1326,7 +1432,7 @@ async function api(request, response, pathname) {
     const body = await readJson(request);
     const entries = Array.isArray(body.entries) && body.entries.length
       ? body.entries.slice(0, 2000)
-      : queueStore.queue.items.map((track) => ({ type: "track", serverId: track.serverId, track }));
+      : queueStore.queue.items.map(queueEntryFromTrack);
     if (!entries.length) return sendJson(response, 400, { error: "Afspilningslisten er tom" });
     const tracks = await resolveQueueEntries(entries, false);
     if (!tracks.length) return sendJson(response, 409, { error: "Afspilningslisten indeholder ingen afspillelige numre" });
@@ -1352,7 +1458,7 @@ async function api(request, response, pathname) {
     if (!tracks.length) return sendJson(response, 409, { error: "Afspilningslisten indeholder ingen afspillelige numre" });
     queueStore.queue = { ...emptyQueue(), name: playlist.name, items: tracks, options: { ...queueStore.queue.options, shuffle: body.shuffle === true } };
     saveQueueStore();
-    await playQueueIndex(0);
+    await playQueueIndex(0, body.deviceId);
     return sendJson(response, 200, queuePayload());
   }
 
@@ -1368,6 +1474,7 @@ async function api(request, response, pathname) {
     }
     const spotifyStatus = await getSpotifyPlayerStatus(streamerName, status);
     if (spotifyStatus) {
+      await reconcileQueueStatus(spotifyStatus);
       saveDirectPlayback(null);
       return sendJson(response, 200, { ...status, ...spotifyStatus });
     }
@@ -1603,4 +1710,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, normalizeConfig, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, spotifySearchResults, startServer, stopServer, toneCommand, toneFromDevice, unknownDirectPlaybackStatus, server };
+module.exports = { currentPlayerStatus, deviceReadAttempts, durationMilliseconds, matchingQueueIndex, mcuFrame, normalizeConfig, parseMediaResponse, queueAtNaturalEnd, queueTrack, shuffledQueue, spotifyPlayerStatus, spotifyQueueTrack, spotifySearchResults, startServer, stopServer, toneCommand, toneFromDevice, unknownDirectPlaybackStatus, server };
