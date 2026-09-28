@@ -1305,7 +1305,8 @@ async function api(request, response, pathname) {
   if (request.method === "GET" && pathname === "/api/spotify/playback") {
     const deviceId = new URL(request.url, "http://localhost").searchParams.get("deviceId") || "";
     const playback = await spotifyFetch("/me/player");
-    if (!playback?.item || playback.device?.id !== deviceId) return sendJson(response, 200, { active: false });
+    if (!playback?.item) return sendJson(response, 200, { active: false, reason: "no-playback" });
+    if (playback.device?.id !== deviceId) return sendJson(response, 200, { active: false, reason: "other-device" });
     return sendJson(response, 200, {
       active: true,
       status: playback.is_playing ? "play" : "pause",
