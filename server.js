@@ -3,6 +3,7 @@ const net = require("node:net");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { Readable } = require("node:stream");
 
 function loadEnvFile(filePath) {
   let contents;
@@ -916,7 +917,9 @@ function queueEntryFromTrack(track) {
 
 async function spotifyDevice(deviceId) {
   const devices = await spotifyFetch("/me/player/devices");
-  const device = devices.devices.find((item) => item.id === deviceId) || devices.devices.find((item) => item.is_active);
+  const device = deviceId
+    ? devices.devices.find((item) => item.id === deviceId)
+    : devices.devices.find((item) => item.is_active);
   if (!device) throw new Error("iEast er ikke synlig i Spotify Connect. Åbn Spotify-appen og vælg enheden én gang.");
   return device;
 }
@@ -1130,6 +1133,40 @@ async function readJson(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
+async function proxyLocalMedia(request, response, sourceUrl) {
+  const headers = {};
+  if (request.headers.range) headers.Range = request.headers.range;
+  const upstream = await fetch(sourceUrl, { headers });
+  response.writeHead(upstream.status, Object.fromEntries(
+    ["content-type", "content-length", "content-range", "accept-ranges", "icy-metaint"]
+      .map((name) => [name, upstream.headers.get(name)])
+      .filter(([, value]) => value != null)
+  ));
+  if (request.method === "HEAD" || !upstream.body) return response.end();
+  const stream = Readable.fromWeb(upstream.body);
+  stream.on("error", () => response.destroy());
+  response.on("close", () => {
+    if (!response.writableEnded) stream.destroy();
+  });
+  stream.pipe(response);
+}
+
+function isLoopbackRequest(request) {
+  const remoteAddress = request.socket.remoteAddress || "";
+  let requestHost = "";
+  let originHost = "";
+  try {
+    requestHost = new URL(`http://${request.headers.host}`).hostname;
+    if (request.headers.origin) originHost = new URL(request.headers.origin).hostname;
+  } catch {
+    return false;
+  }
+  const loopbackNames = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+  return new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]).has(remoteAddress)
+    && loopbackNames.has(requestHost)
+    && (!originHost || loopbackNames.has(originHost));
+}
+
 function deviceReadAttempts(command) {
   return new Set(["getPlayerStatus", "getStatusEx"]).has(command) ? 4 : 1;
 }
@@ -1173,6 +1210,17 @@ function getDevicePlayerStatus() {
 }
 
 async function api(request, response, pathname) {
+  const localMediaMatch = pathname.match(/^\/api\/local-media\/(queue|radio)\/(.+)$/);
+  if (localMediaMatch && new Set(["GET", "HEAD"]).has(request.method)) {
+    if (!isLoopbackRequest(request)) return sendJson(response, 403, { errorCode: "LOCAL_PLAYBACK_LOCAL_ONLY" });
+    const id = decodeURIComponent(localMediaMatch[2]);
+    const source = localMediaMatch[1] === "queue"
+      ? queueStore.queue.items.find((item) => item.queueItemId === id)
+      : config.radios.find((radio) => radio.id === id);
+    if (!source?.url) return sendJson(response, 404, { errorCode: "NOT_FOUND" });
+    return proxyLocalMedia(request, response, source.url);
+  }
+
   if (request.method === "GET" && pathname === "/api/spotify/login") {
     if (!config.spotifyClientId) return redirect(response, "/?spotifyErrorCode=CLIENT_ID_REQUIRED");
     const verifier = base64Url(crypto.randomBytes(64));
@@ -1252,6 +1300,45 @@ async function api(request, response, pathname) {
     return sendJson(response, 200, {
       devices: data.devices.map((device) => ({ id: device.id, name: device.name, type: device.type, active: device.is_active })),
     });
+  }
+
+  if (request.method === "GET" && pathname === "/api/spotify/playback") {
+    const deviceId = new URL(request.url, "http://localhost").searchParams.get("deviceId") || "";
+    const playback = await spotifyFetch("/me/player");
+    if (!playback?.item || playback.device?.id !== deviceId) return sendJson(response, 200, { active: false });
+    return sendJson(response, 200, {
+      active: true,
+      status: playback.is_playing ? "play" : "pause",
+      curpos: Number(playback.progress_ms) || 0,
+      totlen: Number(playback.item.duration_ms) || 0,
+      Title: playback.item.name || "",
+      Artist: playback.item.artists?.map((artist) => artist.name).join(", ") || "",
+      Album: playback.item.album?.name || "",
+      artwork: playback.item.album?.images?.[0]?.url || null,
+      spotifyUri: playback.item.uri || null,
+      mediaType: "track",
+      vol: Number(playback.device.volume_percent) || 0,
+      mute: Number(playback.device.volume_percent) === 0 ? 1 : 0,
+    });
+  }
+
+  if (request.method === "POST" && pathname === "/api/spotify/command") {
+    const body = await readJson(request);
+    const deviceId = encodeURIComponent(String(body.deviceId || ""));
+    if (!deviceId) return sendJson(response, 400, { errorCode: "SPOTIFY_DEVICE_UNAVAILABLE" });
+    if (body.action === "play" || body.action === "pause") {
+      await spotifyFetch(`/me/player/${body.action === "play" ? "play" : "pause"}?device_id=${deviceId}`, { method: "PUT" });
+    } else if (body.action === "next" || body.action === "prev") {
+      await spotifyFetch(`/me/player/${body.action === "next" ? "next" : "previous"}?device_id=${deviceId}`, { method: "POST" });
+    } else if (body.action === "seek" && Number.isInteger(body.value) && body.value >= 0) {
+      await spotifyFetch(`/me/player/seek?position_ms=${body.value}&device_id=${deviceId}`, { method: "PUT" });
+    } else if (["volume", "mute", "unmute"].includes(body.action) && Number.isInteger(body.value) && body.value >= 0 && body.value <= 100) {
+      await spotifyFetch(`/me/player/volume?volume_percent=${body.value}&device_id=${deviceId}`, { method: "PUT" });
+    } else {
+      return sendJson(response, 400, { errorCode: "COMMAND_INVALID" });
+    }
+    spotifyPlaybackCache.expiresAt = 0;
+    return sendJson(response, 200, { ok: true });
   }
 
   if (request.method === "GET" && pathname === "/api/spotify/album") {
@@ -1361,7 +1448,7 @@ async function api(request, response, pathname) {
       queueStore.queue.items.push(...tracks);
       if (queueStore.queue.originalItems) queueStore.queue.originalItems.push(...tracks);
       const spotifyTracks = tracks.filter((track) => track.type === "spotify");
-      if (spotifyTracks.length) await appendSpotifyItems(spotifyTracks, body.deviceId);
+      if (spotifyTracks.length && body.syncSpotify !== false) await appendSpotifyItems(spotifyTracks, body.deviceId);
     }
     else {
       queueStore.queue = { ...emptyQueue(), options: { ...queueStore.queue.options, shuffle }, items: tracks };
@@ -1404,7 +1491,19 @@ async function api(request, response, pathname) {
     if (!Number.isInteger(body.index) || body.index < 0 || body.index >= queueStore.queue.items.length) {
       return sendJson(response, 400, { error: "Ugyldigt nummer i køen" });
     }
-    await playQueueIndex(body.index, body.deviceId);
+    if (body.singleSpotify && queueStore.queue.items[body.index]?.type === "spotify") {
+      await playSpotifyItems([queueStore.queue.items[body.index]], body.deviceId);
+      queueStore.queue.index = body.index;
+      queueStore.queue.state = "playing";
+      saveQueueStore();
+    } else {
+      await playQueueIndex(body.index, body.deviceId);
+    }
+    return sendJson(response, 200, queuePayload());
+  }
+
+  if (request.method === "POST" && pathname === "/api/queue/extend") {
+    await appendNextAlbum();
     return sendJson(response, 200, queuePayload());
   }
 
@@ -1458,7 +1557,7 @@ async function api(request, response, pathname) {
     if (!tracks.length) return sendJson(response, 409, { error: "Afspilningslisten indeholder ingen afspillelige numre" });
     queueStore.queue = { ...emptyQueue(), name: playlist.name, items: tracks, options: { ...queueStore.queue.options, shuffle: body.shuffle === true } };
     saveQueueStore();
-    await playQueueIndex(0, body.deviceId);
+    if (body.play !== false) await playQueueIndex(0, body.deviceId);
     return sendJson(response, 200, queuePayload());
   }
 

@@ -43,6 +43,8 @@ button:disabled { cursor: wait; opacity: .55; }
 .connection.online .status-dot { background: var(--accent); box-shadow: 0 0 0 4px rgba(229, 255, 95, .1); }
 .connection.offline .status-dot { background: #ff7268; box-shadow: 0 0 0 4px rgba(255, 114, 104, .1); }
 .top-actions { display: flex; align-items: center; gap: 18px; }
+.playback-target { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.playback-target select { min-height: 34px; padding: 0 30px 0 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--text); font: 600 11px "DM Sans", sans-serif; cursor: pointer; }
 .top-action-button { width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); color: var(--muted); cursor: pointer; }
 .top-action-button:hover:not(:disabled) { color: var(--text); border-color: color-mix(in srgb, var(--text) 18%, transparent); }
 .top-action-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -275,7 +277,7 @@ dl { margin: 24px 0 0; }dl div { display: flex; justify-content: space-between; 
 }
 @media (max-width: 620px) {
   .shell { width: min(100% - 28px, 500px); padding-top: 20px; }
-  .topbar { padding-bottom: 20px; }.connection { font-size: 0; }.connection #connectionText::after { content: var(--i18n-status); font-size: 12px; }
+  .topbar { padding-bottom: 20px; }.top-actions { gap: 8px; }.playback-target > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }.playback-target select { max-width: 132px; }.connection { font-size: 0; }.connection #connectionText::after { content: var(--i18n-status); font-size: 12px; }
   .hero { display: block; padding: 36px 4px 46px; }.artwork { width: min(74vw, 330px); margin: 0 auto 38px; }
   h1 { font-size: 40px; }.artist { margin-bottom: 5px; font-size: 16px; }.now-album { justify-content: center; }.player { text-align: center; }.times, .volume-row, .tone-controls { text-align: left; }
   .queue-card { padding: 22px 18px; }.queue-heading, .saved-playlists-heading { align-items: start; flex-direction: column; gap: 5px; }.queue-options { display: grid; }.saved-playlists { padding: 17px 14px; }.playlist-controls select, .selection-toolbar input[type="text"] { width: 100%; }.selection-toolbar span { width: 100%; }

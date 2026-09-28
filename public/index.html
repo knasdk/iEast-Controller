@@ -17,6 +17,13 @@
           <span data-i18n="product.ieast">iEast</span>
         </a>
         <div class="top-actions">
+          <label class="playback-target" for="playbackTarget">
+            <span data-i18n="player.playOn">Afspil på</span>
+            <select id="playbackTarget" aria-label="Afspil på" data-i18n-attr="aria-label:player.playOn">
+              <option value="ieast" data-i18n="player.targetIeast">iEast</option>
+              <option value="computer" data-i18n="player.targetComputer">Denne computer</option>
+            </select>
+          </label>
           <div class="connection" id="connection">
             <span class="status-dot"></span>
             <span id="connectionText" data-i18n="connection.connecting">Forbinder...</span>

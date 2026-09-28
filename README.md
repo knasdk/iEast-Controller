@@ -50,6 +50,8 @@ On Windows, start either the setup program or the portable executable. Unsigned 
 
 Open **Indstillinger** on first launch and enter the iEast IP address. The interface language, DLNA servers, and an optional Spotify Client ID can be configured in the same dialog. Desktop settings, queues, playlists, and Spotify tokens are stored under `~/.config/ieast-controller/state` on Linux and `%APPDATA%\ieast-controller\state` on Windows.
 
+Use **Afspil på** in the top bar to switch between the iEast streamer and the computer's speakers. Computer playback supports radio, DLNA queues, playlists, and Spotify. Spotify playback requires Premium and the Spotify desktop app to be open on the computer as a Connect device.
+
 Spotify must have this exact redirect URI registered in its Developer Dashboard:
 
 ```text
@@ -295,6 +297,24 @@ SPOTIFY_REDIRECT_URI=https://music.example.com/api/spotify/callback
 - Use the radio section to play, rate, and filter stations.
 - Open the gear icon to configure the streamer, media servers, Spotify, and radio stations.
 
+### Playing on the iEast or the computer
+
+Use **Afspil på** in the top bar to select the playback destination:
+
+- **iEast** sends radio, DLNA music, queues, playlists, and Spotify to the configured iEast/LinkPlay streamer.
+- **Denne computer** plays radio and DLNA music through the browser or desktop application's audio output. The controller proxies these streams locally to avoid browser mixed-content restrictions.
+- For Spotify, **Denne computer** uses the official Spotify desktop application as a Spotify Connect device. The browser is only the controller; it does not decode or play Spotify audio itself.
+
+To play Spotify through the computer:
+
+1. Install and open the Spotify desktop application on the computer.
+2. Sign in to Spotify Desktop with the same Premium account connected to iEast Controller.
+3. Select **Denne computer** under **Afspil på**.
+4. Open the **Spotify** tab.
+5. Select the computer in the Spotify Connect device list and start a track.
+
+Spotify Desktop must remain open while it is used as the playback device. Opening iEast Controller in Chrome, Brave, or another browser does not replace the Spotify desktop application. Direct computer playback of radio and DLNA music is restricted to a controller opened locally through `127.0.0.1` or `localhost`; remote clients should use the iEast playback target.
+
 ## Troubleshooting
 
 ### The streamer cannot be reached
@@ -322,16 +342,21 @@ Confirm that `.state/` survives restarts. On ephemeral hosting, configure `STATE
 
 ### No Spotify Connect devices are shown
 
-- Open Spotify on the target device or another Spotify client first.
+- Open the Spotify desktop application on the target computer first. Merely opening iEast Controller in Chrome or Brave does not create a Spotify Connect device.
 - Confirm the device uses the same Spotify account.
 - Confirm the account has Spotify Premium.
+- Start playback once in Spotify Desktop if the computer still does not appear, then reload the Spotify tab in iEast Controller.
+
+### Spotify says "Failed to initialize player"
+
+Current versions use Spotify Desktop through Spotify Connect and do not initialize Spotify's browser player. Restart iEast Controller and refresh the page to load the current frontend. Then open Spotify Desktop and select it from the Connect device list. If the message remains, an older packaged build or cached frontend is still running.
 
 ## Security
 
 - `.env` is excluded by `.gitignore`.
 - `.env.example` contains placeholders only and is safe to commit.
 - Spotify uses PKCE and does not require a Client Secret.
-- OAuth tokens are never sent to the browser.
+- Spotify OAuth tokens are never sent to the browser.
 - `.state/` is ignored, so the repository contains no OAuth tokens or runtime state.
 
 Before committing, verify the file list:

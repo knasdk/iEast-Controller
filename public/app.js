@@ -21,12 +21,22 @@ const state = {
   browseStack: [],
   spotify: { configured: false, connected: false },
   spotifySearch: { query: "" },
+  spotifyDevices: [],
+  computerSpotifyDeviceId: "",
+  playbackTarget: "ieast",
+  computerSource: null,
+  computerQueueIndex: -1,
+  computerQueueItemId: "",
+  computerStatus: null,
+  computerVolume: 0.5,
+  computerMuted: false,
 };
 let toastTimer;
 const toneTimers = {};
 let selectionSyncTimer;
 let selectionSyncChain = Promise.resolve();
 let statusRefreshing = false;
+const computerAudio = new Audio();
 
 function storedTheme() {
   try {
@@ -34,6 +44,14 @@ function storedTheme() {
     return ["light", "dark"].includes(theme) ? theme : null;
   } catch {
     return null;
+  }
+}
+
+function storedPlaybackTarget() {
+  try {
+    return localStorage.getItem("ieast-playback-target") === "computer" ? "computer" : "ieast";
+  } catch {
+    return "ieast";
   }
 }
 
@@ -124,6 +142,11 @@ async function request(url, options) {
 
 async function command(action, value) {
   try {
+    if (state.playbackTarget === "computer") {
+      await computerCommand(action, value);
+      refreshComputerStatus();
+      return;
+    }
     await request("/api/command", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -132,6 +155,82 @@ async function command(action, value) {
     setTimeout(refreshStatus, 250);
   } catch (error) {
     notify(error.message);
+  }
+}
+
+function spotifyDevice() {
+  return state.playbackTarget === "computer"
+    ? state.computerSpotifyDeviceId || $("#spotifyDevice").value
+    : $("#spotifyDevice").value;
+}
+
+function computerAudioStatus() {
+  const item = state.computerQueueIndex >= 0 ? state.queue?.items[state.computerQueueIndex] : state.computerStatus;
+  return {
+    status: computerAudio.paused ? "pause" : "play",
+    Title: item?.title || "",
+    Artist: item?.artist || "",
+    Album: item?.album || "",
+    artwork: item?.artwork || null,
+    serverId: item?.serverId || "",
+    parentId: item?.parentId || "",
+    mediaType: item?.mediaType || (Number.isFinite(computerAudio.duration) ? "track" : "radio"),
+    curpos: Number.isFinite(computerAudio.currentTime) ? computerAudio.currentTime * 1000 : 0,
+    totlen: Number.isFinite(computerAudio.duration) ? computerAudio.duration * 1000 : 0,
+    vol: Math.round(computerAudio.volume * 100),
+    mute: computerAudio.muted ? 1 : 0,
+  };
+}
+
+function refreshComputerStatus() {
+  if (state.playbackTarget !== "computer") return;
+  if (state.computerSource === "audio") renderStatus(computerAudioStatus());
+  else if (state.computerStatus) renderStatus(state.computerStatus);
+  else renderStatus({ status: "stop", vol: Math.round(state.computerVolume * 100) });
+  if (state.queue) renderQueue(state.queue);
+}
+
+async function computerCommand(action, value) {
+  if (action === "next" && state.computerQueueIndex >= 0) {
+    await advanceComputerQueue();
+    return;
+  }
+  if (action === "prev" && state.computerQueueIndex >= 0) {
+    if (state.computerSource === "audio" && computerAudio.currentTime > 3) computerAudio.currentTime = 0;
+    else await playComputerQueueIndex(Math.max(0, state.computerQueueIndex - 1));
+    return;
+  }
+  if (state.computerSource === "spotify-connect") {
+    let commandValue = value;
+    if (action === "mute") {
+      state.computerMuted = true;
+      commandValue = 0;
+    } else if (action === "unmute") {
+      state.computerMuted = false;
+      commandValue = Math.round((state.computerVolume || 0.5) * 100);
+    } else if (action === "volume") {
+      state.computerVolume = value / 100;
+      state.computerMuted = false;
+    }
+    await request("/api/spotify/command", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, value: commandValue, deviceId: spotifyDevice() }),
+    });
+    return;
+  }
+  if (action === "play") await computerAudio.play();
+  else if (action === "pause") computerAudio.pause();
+  else if (action === "seek") computerAudio.currentTime = value / 1000;
+  else if (action === "mute" || action === "unmute") {
+    state.computerMuted = action === "mute";
+    computerAudio.muted = state.computerMuted;
+  }
+  else if (action === "volume") {
+    state.computerVolume = value / 100;
+    state.computerMuted = false;
+    computerAudio.muted = false;
+    computerAudio.volume = state.computerVolume;
   }
 }
 
@@ -170,6 +269,21 @@ async function loadTone() {
 }
 
 function renderQueue(data) {
+  if (state.playbackTarget === "computer" && state.computerQueueItemId) {
+    const currentIndex = data.items.findIndex((item) => item.queueItemId === state.computerQueueItemId);
+    if (currentIndex >= 0) state.computerQueueIndex = currentIndex;
+    else {
+      state.computerQueueIndex = -1;
+      state.computerQueueItemId = "";
+    }
+  }
+  if (state.playbackTarget === "computer" && state.computerQueueIndex >= 0) {
+    data = {
+      ...data,
+      index: state.computerQueueIndex,
+      state: state.playing ? "playing" : state.computerSource ? "paused" : "stopped",
+    };
+  }
   state.queue = data;
   $("#queueAutoNext").checked = data.options.autoNext;
   $("#queueContinueAlbums").checked = data.options.continueAlbums;
@@ -224,17 +338,15 @@ function renderQueue(data) {
       play.disabled = true;
       try {
         if (isCurrent && ["playing", "paused"].includes(data.state)) {
-          await request("/api/command", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: isPlaying ? "pause" : "play" }),
-          });
+          await command(isPlaying ? "pause" : "play");
           await loadQueue();
+        } else if (state.playbackTarget === "computer") {
+          await playComputerQueueIndex(index);
         } else {
           renderQueue(await request("/api/queue/play-index", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ index, deviceId: item.type === "spotify" ? $("#spotifyDevice").value : undefined }),
+            body: JSON.stringify({ index, deviceId: item.type === "spotify" ? spotifyDevice() : undefined }),
           }));
         }
         setTimeout(refreshStatus, 500);
@@ -309,6 +421,70 @@ async function loadQueue() {
     // Player status remains usable if queue state cannot be loaded.
   }
 }
+
+async function ensureSpotifyComputerDevice() {
+  await loadSpotifyDevices();
+  const selected = state.spotifyDevices.find((device) => device.id === $("#spotifyDevice").value && device.type?.toLowerCase() === "computer");
+  const device = selected || state.spotifyDevices.find((item) => item.type?.toLowerCase() === "computer");
+  if (!device) throw new Error(t("spotify.openDesktop"));
+  $("#spotifyDevice").value = device.id;
+  state.computerSpotifyDeviceId = device.id;
+  return device.id;
+}
+
+async function pauseSpotifyComputer() {
+  if (state.computerSource !== "spotify-connect" || !spotifyDevice()) return;
+  await request("/api/spotify/command", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "pause", deviceId: spotifyDevice() }),
+  });
+}
+
+async function playComputerQueueIndex(index) {
+  const item = state.queue?.items[index];
+  if (!item) return;
+  state.computerQueueIndex = index;
+  state.computerQueueItemId = item.queueItemId;
+  if (item.type === "spotify") {
+    computerAudio.pause();
+    const deviceId = await ensureSpotifyComputerDevice();
+    state.computerSource = "spotify-connect";
+    state.queue = await request("/api/queue/play-index", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index, deviceId, singleSpotify: true }),
+    });
+  } else {
+    await pauseSpotifyComputer();
+    state.computerSource = "audio";
+    state.computerStatus = item;
+    computerAudio.src = `/api/local-media/queue/${encodeURIComponent(item.queueItemId)}`;
+    computerAudio.muted = state.computerMuted;
+    computerAudio.volume = state.computerVolume;
+    await computerAudio.play();
+  }
+  refreshComputerStatus();
+}
+
+async function advanceComputerQueue() {
+  if (!state.queue) return;
+  let nextIndex = state.computerQueueIndex + 1;
+  if (nextIndex >= (state.queue?.items.length || 0) && state.queue?.options.continueAlbums) {
+    state.queue = await request("/api/queue/extend", { method: "POST" });
+  }
+  nextIndex = state.computerQueueIndex + 1;
+  if (nextIndex < state.queue.items.length) await playComputerQueueIndex(nextIndex);
+}
+
+computerAudio.addEventListener("play", refreshComputerStatus);
+computerAudio.addEventListener("pause", refreshComputerStatus);
+computerAudio.addEventListener("loadedmetadata", refreshComputerStatus);
+computerAudio.addEventListener("ended", () => {
+  if (state.computerQueueIndex >= 0 && state.queue?.options.autoNext) advanceComputerQueue().catch((error) => notify(error.message));
+  else refreshComputerStatus();
+});
+computerAudio.addEventListener("error", () => notify(computerAudio.error?.message || t("connection.offline")));
 
 function updateSelectionSummary() {
   const count = state.selections.size;
@@ -489,6 +665,33 @@ async function refreshStatus() {
   if (statusRefreshing) return;
   statusRefreshing = true;
   try {
+    if (state.playbackTarget === "computer") {
+      const queue = await request("/api/queue").catch(() => null);
+      if (state.computerSource === "spotify-connect" && spotifyDevice()) {
+        const playback = await request(`/api/spotify/playback?deviceId=${encodeURIComponent(spotifyDevice())}`).catch(() => null);
+        const previous = state.computerStatus;
+        const ended = playback?.active
+          && playback.status === "pause"
+          && previous?.status === "play"
+          && Number(previous.totlen) > 0
+          && Number(playback.totlen) - Number(playback.curpos) <= 500;
+        if (playback?.active) {
+          state.computerStatus = playback;
+          if (!playback.mute) state.computerVolume = playback.vol / 100;
+        }
+        if (ended && state.computerQueueIndex >= 0 && state.queue?.options.autoNext) {
+          state.computerStatus = { ...previous, status: "stop" };
+          advanceComputerQueue().catch((error) => notify(error.message));
+        }
+      }
+      if (queue) {
+        state.queue = queue;
+        refreshComputerStatus();
+      }
+      $("#connection").className = "connection online";
+      $("#connectionText").textContent = t("player.computerReady");
+      return;
+    }
     const data = await request("/api/status");
     const [tone, queue] = await Promise.all([
       request("/api/tone").catch(() => null),
@@ -582,6 +785,30 @@ document.querySelectorAll("[data-action]").forEach((button) => {
   button.addEventListener("click", () => command(button.dataset.action));
 });
 
+$("#playbackTarget").addEventListener("change", async (event) => {
+  const previous = state.playbackTarget;
+  state.playbackTarget = event.target.value;
+  try {
+    localStorage.setItem("ieast-playback-target", state.playbackTarget);
+  } catch {
+    // Playback still works for this session when local storage is unavailable.
+  }
+  $(".tone-controls").hidden = state.playbackTarget === "computer";
+  $("#spotifyDevice").hidden = state.libraryMode !== "spotify" || !state.spotify.connected;
+  if (previous === "computer" && state.playbackTarget === "ieast") {
+    computerAudio.pause();
+    await pauseSpotifyComputer().catch((error) => notify(error.message));
+  } else if (state.playbackTarget === "computer") {
+    request("/api/command", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "pause" }),
+    }).catch(() => null);
+  }
+  if (state.libraryMode === "spotify") loadSpotify();
+  refreshStatus();
+});
+
 $("#themeToggle").addEventListener("click", async () => {
   if (!state.config) return;
   const previous = state.config.theme;
@@ -639,6 +866,20 @@ $("#seek").addEventListener("change", (event) => {
 async function playRadio(radio, button) {
   button.disabled = true;
   try {
+    if (state.playbackTarget === "computer") {
+      await pauseSpotifyComputer();
+      state.computerSource = "audio";
+      state.computerQueueIndex = -1;
+      state.computerQueueItemId = "";
+      state.computerStatus = { ...radio, title: radio.name, artist: t("common.radio"), mediaType: "radio" };
+      computerAudio.src = `/api/local-media/radio/${encodeURIComponent(radio.id)}`;
+      computerAudio.muted = state.computerMuted;
+      computerAudio.volume = state.computerVolume;
+      await computerAudio.play();
+      refreshComputerStatus();
+      notify(t("player.playingItem", { title: radio.name }));
+      return;
+    }
     await request("/api/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -760,11 +1001,7 @@ function createTrackRow(item) {
       play.disabled = true;
       try {
         if (play.dataset.action === "pause") {
-          await request("/api/command", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "pause" }),
-          });
+          await command("pause");
           state.playing = false;
           updateTrackHighlights();
           setTimeout(refreshStatus, 250);
@@ -778,10 +1015,11 @@ function createTrackRow(item) {
             entries: [albumPlayback ? albumQueueEntry(item) : trackQueueEntry(item)],
             startObjectId: item.id,
             shuffle: false,
-            play: true,
+            play: state.playbackTarget !== "computer",
           }),
         });
         renderQueue(queue);
+        if (state.playbackTarget === "computer") await playComputerQueueIndex(0);
         setCurrentTrack(item.title, item.artist);
         notify(t("player.playingItem", { title: item.title }));
         setTimeout(refreshStatus, 500);
@@ -941,17 +1179,22 @@ async function loadSpotifyDevices() {
   const select = $("#spotifyDevice");
   try {
     const data = await request("/api/spotify/devices");
-    const options = data.devices.map((device) => {
+    state.spotifyDevices = data.devices;
+    const selectedId = select.value;
+    const devices = state.playbackTarget === "computer"
+      ? data.devices.filter((device) => device.type?.toLowerCase() === "computer")
+      : data.devices;
+    const options = devices.map((device) => {
       const option = document.createElement("option");
       option.value = device.id;
       option.textContent = `${device.name}${device.active ? ` · ${t("spotify.active")}` : ""}`;
-      option.selected = device.active;
+      option.selected = device.id === selectedId || (!selectedId && device.active);
       return option;
     });
     if (!options.length) {
       const option = document.createElement("option");
       option.value = "";
-      option.textContent = t("spotify.noDevices");
+      option.textContent = t(state.playbackTarget === "computer" ? "spotify.noComputer" : "spotify.noDevices");
       options.push(option);
     }
     select.replaceChildren(...options);
@@ -1036,28 +1279,35 @@ function renderSpotifyResults(items, albumEntry = null) {
       play.disabled = true;
       try {
         if (play.dataset.action === "pause") {
-          await request("/api/command", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "pause" }),
-          });
+          await command("pause");
           state.playing = false;
           updateTrackHighlights();
           setTimeout(refreshStatus, 250);
           return;
         }
+        if (state.playbackTarget === "computer") {
+          computerAudio.pause();
+          await ensureSpotifyComputerDevice();
+          state.computerSource = "spotify-connect";
+        }
         const result = albumEntry && item.type === "track"
           ? await request("/api/queue", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ entries: [albumEntry], startObjectId: item.uri, play: true, shuffle: false, deviceId: $("#spotifyDevice").value }),
+            body: JSON.stringify({ entries: [albumEntry], startObjectId: item.uri, play: state.playbackTarget !== "computer", shuffle: false, deviceId: spotifyDevice() }),
           })
           : await request("/api/spotify/play", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ uri: item.uri, deviceId: $("#spotifyDevice").value }),
+            body: JSON.stringify({ uri: item.uri, deviceId: spotifyDevice() }),
           });
-        if (albumEntry) renderQueue(result);
+        if (albumEntry) {
+          renderQueue(result);
+          if (state.playbackTarget === "computer") await playComputerQueueIndex(0);
+        } else if (state.playbackTarget === "computer") {
+          state.computerQueueIndex = -1;
+          state.computerQueueItemId = "";
+        }
         if (item.type === "track") setCurrentTrack(item.title, item.subtitle);
         notify(albumEntry ? t("player.playingItem", { title: item.title }) : t("player.playingOn", { title: item.title, device: result.device }));
         setTimeout(refreshStatus, 700);
@@ -1305,12 +1555,14 @@ async function submitSelection(mode) {
       body: JSON.stringify({
         entries: [...state.selections.values()],
         mode,
-        play: mode !== "append",
+        play: mode !== "append" && state.playbackTarget !== "computer",
         shuffle: false,
-        deviceId: $("#spotifyDevice").value,
+        deviceId: spotifyDevice(),
+        syncSpotify: state.playbackTarget !== "computer",
       }),
     });
     renderQueue(queue);
+    if (mode !== "append" && state.playbackTarget === "computer") await playComputerQueueIndex(0);
     notify(t(mode === "append" ? "queue.appended" : "queue.playingSelection"));
   } catch (error) {
     notify(error.message);
@@ -1337,11 +1589,13 @@ $("#playPlaylist").addEventListener("click", async () => {
   const id = $("#savedPlaylist").value;
   if (!id) return;
   try {
-    renderQueue(await request(`/api/playlists/${id}/play`, {
+    const queue = await request(`/api/playlists/${id}/play`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shuffle: $("#playlistShuffle").checked, deviceId: $("#spotifyDevice").value }),
-    }));
+      body: JSON.stringify({ shuffle: $("#playlistShuffle").checked, deviceId: spotifyDevice(), play: state.playbackTarget !== "computer" }),
+    });
+    renderQueue(queue);
+    if (state.playbackTarget === "computer") await playComputerQueueIndex(0);
   } catch (error) {
     notify(error.message);
   }
@@ -1388,7 +1642,17 @@ $("#deletePlaylist").addEventListener("click", async () => {
 });
 $("#clearQueue").addEventListener("click", async () => {
   try {
+    const stopComputer = state.playbackTarget === "computer" && state.computerQueueIndex >= 0;
     renderQueue(await request("/api/queue", { method: "DELETE" }));
+    if (stopComputer) {
+      computerAudio.pause();
+      await pauseSpotifyComputer();
+      state.computerSource = null;
+      state.computerQueueIndex = -1;
+      state.computerQueueItemId = "";
+      state.computerStatus = null;
+      refreshComputerStatus();
+    }
     selectPlaylistEntries([]);
   } catch (error) {
     notify(error.message);
@@ -1571,6 +1835,9 @@ renderToneValue("bass", $("#bass").value);
 renderToneValue("treble", $("#treble").value);
 
 async function initialize() {
+  state.playbackTarget = storedPlaybackTarget();
+  $("#playbackTarget").value = state.playbackTarget;
+  $(".tone-controls").hidden = state.playbackTarget === "computer";
   $("#settingsLanguage").replaceChildren(...Object.entries(I18n.localeNames).map(([value, label]) => {
     const option = document.createElement("option");
     option.value = value;
