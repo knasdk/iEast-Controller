@@ -597,6 +597,7 @@ function playbackTitle(value) {
 
 function directPlaybackMatches(status, playback, now = Date.now()) {
   if (!playback || !new Set(["10", "20", "21"]).has(String(status.mode))) return false;
+  if (playback.mediaType === "radio") return true;
   if (now - Number(playback.startedAt || 0) < 5000) return true;
   const current = playbackTitle(status);
   if (!current) return true;
@@ -1722,6 +1723,7 @@ async function api(request, response, pathname) {
       artwork: typeof metadata.artwork === "string" ? metadata.artwork : null,
       disableArtwork: metadata.disableArtwork === true,
       mediaType: metadata.mediaType === "radio" ? "radio" : "track",
+      radioId: String(metadata.radioId || "").slice(0, 100),
       serverId: String(metadata.serverId || "").slice(0, 100),
       parentId: String(metadata.parentId || "").slice(0, 500),
       folderTitle: String(metadata.folderTitle || "").slice(0, 300),

@@ -207,6 +207,19 @@ test("currentPlayerStatus supplies local metadata immediately", () => {
   });
 });
 
+test("currentPlayerStatus keeps radio identity when stream metadata changes", () => {
+  const status = { mode: "10", status: "play", Title: "Current song" };
+  const playback = {
+    Title: "Station name",
+    Artist: "Radio",
+    mediaType: "radio",
+    radioId: "station-1",
+    startedAt: 1000,
+  };
+
+  assert.equal(currentPlayerStatus(status, playback, 10000).radioId, "station-1");
+});
+
 test("spotifyPlayerStatus uses the current track on the iEast device", () => {
   const playback = {
     is_playing: true,
