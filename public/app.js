@@ -39,6 +39,7 @@ let selectionSyncTimer;
 let selectionSyncChain = Promise.resolve();
 let statusRefreshing = false;
 let computerQueueAdvancing = false;
+let queueScrollItemId = "";
 let computerPlaybackGeneration = 0;
 let playbackSourceGeneration = 0;
 let playbackTargetGeneration = 0;
@@ -362,7 +363,8 @@ function renderQueue(data) {
       state: t(`queue.state.${data.state === "playing" ? "playing" : data.state === "paused" ? "paused" : "stopped"}`),
     })
     : t("queue.empty");
-  $("#queueList").replaceChildren(...data.items.map((item, index) => {
+  const queueList = $("#queueList");
+  queueList.replaceChildren(...data.items.map((item, index) => {
     const row = document.createElement("li");
     row.classList.toggle("current", index === data.index);
     const cover = document.createElement("span");
@@ -431,6 +433,21 @@ function renderQueue(data) {
     row.append(cover, number, title, artist, album, play);
     return row;
   }));
+  const currentItem = data.items[data.index];
+  const currentItemId = currentItem?.queueItemId ? `${currentItem.queueItemId}:${data.index}` : "";
+  if (currentItemId !== queueScrollItemId) {
+    queueScrollItemId = currentItemId;
+    const currentRow = queueList.querySelector("li.current");
+    if (currentRow) requestAnimationFrame(() => {
+      if (!currentRow.isConnected || queueScrollItemId !== currentItemId) return;
+      const listRect = queueList.getBoundingClientRect();
+      const rowRect = currentRow.getBoundingClientRect();
+      queueList.scrollTo({
+        top: queueList.scrollTop + rowRect.top - listRect.top - (queueList.clientHeight - currentRow.offsetHeight) / 2,
+        behavior: "smooth",
+      });
+    });
+  }
   const selected = $("#savedPlaylist").value;
   const options = data.playlists.map((playlist) => {
     const option = document.createElement("option");
