@@ -8,6 +8,7 @@ The application has a dependency-free Node.js server with a responsive frontend.
 
 - Control playback, volume, mute, bass, treble, seeking, and track navigation
 - Display current track metadata and artwork
+- Animate a detailed vinyl turntable with the album cover on the record and a tonearm that follows playback, pauses, seeking, and stopping
 - Show track durations in the player, queue, saved playlists, and DLNA/Spotify results, including on mobile
 - Search and browse one or more DLNA/UPnP media servers
 - Play complete albums sequentially or shuffled, with optional continuation to the next album folder
@@ -315,6 +316,8 @@ To play Spotify through the computer:
 5. Select the computer in the Spotify Connect device list and start a track.
 
 Spotify Desktop must remain open while it is used as the playback device. Opening iEast Controller in Chrome, Brave, or another browser does not replace the Spotify desktop application. Direct computer playback of radio and DLNA music is restricted to a controller opened locally through `127.0.0.1` or `localhost`; remote clients should use the iEast playback target.
+
+Reloading the controller reconnects to the remembered or active Spotify computer and synchronizes the current track, cover, queue, playback position, and tonearm without restarting or pausing Spotify playback.
 
 ## Troubleshooting
 

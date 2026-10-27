@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="848" height="848" viewBox="0 0 848 848">
+  <defs>
+    <linearGradient id="rim" x2=".8" y2="1">
+      <stop stop-color="#b9ac86"/>
+      <stop offset=".2" stop-color="#37382f"/>
+      <stop offset=".45" stop-color="#807858"/>
+      <stop offset=".7" stop-color="#c3b78d"/>
+      <stop offset="1" stop-color="#504d39"/>
+    </linearGradient>
+    <radialGradient id="vinyl" cx=".5" cy=".5" r=".5">
+      <stop offset=".32" stop-color="#050605"/>
+      <stop offset=".45" stop-color="#171918"/>
+      <stop offset=".68" stop-color="#111312"/>
+      <stop offset=".92" stop-color="#080a09"/>
+      <stop offset="1" stop-color="#181a18"/>
+    </radialGradient>
+  </defs>
+  <circle cx="424" cy="424" r="422" fill="#141611" stroke="url(#rim)" stroke-width="3"/>
+  <g fill="none" stroke="url(#rim)" stroke-linecap="round">
+    <circle cx="424" cy="424" r="415" stroke-width="4" stroke-dasharray=".2 11.9"/>
+    <circle cx="424" cy="424" r="407" stroke-width="4" stroke-dasharray=".2 11.4" stroke-dashoffset="6"/>
+    <circle cx="424" cy="424" r="399" stroke-width="3.5" stroke-dasharray=".2 11"/>
+  </g>
+  <circle cx="424" cy="424" r="394" fill="url(#vinyl)" stroke="#030403" stroke-width="2"/>
+  <g fill="none" stroke="#b4bcb4" stroke-opacity=".11" stroke-width=".7">
+    <circle cx="424" cy="424" r="388"/>
+    <circle cx="424" cy="424" r="384"/>
+    <circle cx="424" cy="424" r="380"/>
+    <circle cx="424" cy="424" r="376"/>
+    <circle cx="424" cy="424" r="372"/>
+    <circle cx="424" cy="424" r="368"/>
+    <circle cx="424" cy="424" r="364"/>
+    <circle cx="424" cy="424" r="360"/>
+    <circle cx="424" cy="424" r="356"/>
+    <circle cx="424" cy="424" r="352"/>
+    <circle cx="424" cy="424" r="348"/>
+    <circle cx="424" cy="424" r="344"/>
+    <circle cx="424" cy="424" r="340"/>
+    <circle cx="424" cy="424" r="336"/>
+    <circle cx="424" cy="424" r="332"/>
+    <circle cx="424" cy="424" r="328"/>
+    <circle cx="424" cy="424" r="324"/>
+    <circle cx="424" cy="424" r="320"/>
+    <circle cx="424" cy="424" r="316"/>
+    <circle cx="424" cy="424" r="312"/>
+    <circle cx="424" cy="424" r="308"/>
+    <circle cx="424" cy="424" r="304"/>
+    <circle cx="424" cy="424" r="300"/>
+    <circle cx="424" cy="424" r="296"/>
+    <circle cx="424" cy="424" r="292"/>
+    <circle cx="424" cy="424" r="288"/>
+    <circle cx="424" cy="424" r="284"/>
+    <circle cx="424" cy="424" r="280"/>
+    <circle cx="424" cy="424" r="276"/>
+    <circle cx="424" cy="424" r="272"/>
+    <circle cx="424" cy="424" r="268"/>
+    <circle cx="424" cy="424" r="264"/>
+    <circle cx="424" cy="424" r="260"/>
+    <circle cx="424" cy="424" r="256"/>
+    <circle cx="424" cy="424" r="252"/>
+    <circle cx="424" cy="424" r="248"/>
+    <circle cx="424" cy="424" r="244"/>
+    <circle cx="424" cy="424" r="240"/>
+    <circle cx="424" cy="424" r="236"/>
+    <circle cx="424" cy="424" r="232"/>
+    <circle cx="424" cy="424" r="228"/>
+    <circle cx="424" cy="424" r="224"/>
+    <circle cx="424" cy="424" r="220"/>
+    <circle cx="424" cy="424" r="216"/>
+    <circle cx="424" cy="424" r="212"/>
+    <circle cx="424" cy="424" r="208"/>
+    <circle cx="424" cy="424" r="204"/>
+    <circle cx="424" cy="424" r="200"/>
+    <circle cx="424" cy="424" r="196"/>
+    <circle cx="424" cy="424" r="192"/>
+    <circle cx="424" cy="424" r="188"/>
+    <circle cx="424" cy="424" r="184"/>
+    <circle cx="424" cy="424" r="180"/>
+    <circle cx="424" cy="424" r="176"/>
+    <circle cx="424" cy="424" r="172"/>
+    <circle cx="424" cy="424" r="168"/>
+    <circle cx="424" cy="424" r="164"/>
+    <circle cx="424" cy="424" r="160"/>
+  </g>
+  <g fill="none" stroke="#030504" stroke-width="3" opacity=".7">
+    <circle cx="424" cy="424" r="342"/>
+    <circle cx="424" cy="424" r="275"/>
+    <circle cx="424" cy="424" r="215"/>
+  </g>
+  <circle cx="424" cy="424" r="153" fill="#050605" stroke="#54594f" stroke-opacity=".3"/>
+  <circle cx="424" cy="424" r="125" fill="#080a08" stroke="#a6a98d" stroke-width="1"/>
+</svg>

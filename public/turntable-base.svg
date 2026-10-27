@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="904" viewBox="0 0 1200 904">
+  <defs>
+    <linearGradient id="wood" x2="1" y2="1">
+      <stop stop-color="#302c26"/>
+      <stop offset=".42" stop-color="#1c1a17"/>
+      <stop offset="1" stop-color="#25221d"/>
+    </linearGradient>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".19 .004" numOctaves="3" seed="12"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feBlend in="SourceGraphic" mode="soft-light"/>
+    </filter>
+    <radialGradient id="vignette">
+      <stop offset=".35" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".55"/>
+    </radialGradient>
+    <linearGradient id="rim" x2=".8" y2="1">
+      <stop stop-color="#b7ab8d"/>
+      <stop offset=".2" stop-color="#4a4538"/>
+      <stop offset=".5" stop-color="#151513"/>
+      <stop offset=".8" stop-color="#90856c"/>
+      <stop offset="1" stop-color="#3c382f"/>
+    </linearGradient>
+    <radialGradient id="metal" cx=".32" cy=".2" r=".85">
+      <stop stop-color="#5d5a50"/>
+      <stop offset=".42" stop-color="#20201d"/>
+      <stop offset=".8" stop-color="#0d0e0c"/>
+      <stop offset="1" stop-color="#3b382f"/>
+    </radialGradient>
+    <linearGradient id="brass">
+      <stop stop-color="#393124"/>
+      <stop offset=".24" stop-color="#a49266"/>
+      <stop offset=".45" stop-color="#f1e4b1"/>
+      <stop offset=".64" stop-color="#a19066"/>
+      <stop offset="1" stop-color="#433a29"/>
+    </linearGradient>
+    <linearGradient id="slider" x2="0" y2="1">
+      <stop stop-color="#d5d4cc"/>
+      <stop offset=".18" stop-color="#66665e"/>
+      <stop offset=".35" stop-color="#eeeeea"/>
+      <stop offset=".55" stop-color="#8f9088"/>
+      <stop offset=".76" stop-color="#e8e8e3"/>
+      <stop offset="1" stop-color="#51524c"/>
+    </linearGradient>
+    <radialGradient id="warmLight">
+      <stop stop-color="#f6c064" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#d88a2d" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <path fill="url(#wood)" d="M0 0h1200v904H0z"/>
+  <path fill="#6b6150" opacity=".1" filter="url(#grain)" d="M0 0h1200v904H0z"/>
+  <path fill="url(#vignette)" d="M0 0h1200v904H0z"/>
+
+  <!-- The fixed gimbal and arm rest sit below the independently moving arm. -->
+  <circle cx="976" cy="239" r="163" fill="#080908" stroke="#39372f" stroke-width="3"/>
+  <circle cx="976" cy="239" r="155" fill="url(#metal)" stroke="url(#rim)" stroke-width="7"/>
+  <circle cx="976" cy="239" r="111" fill="#0b0c0a" stroke="#3b3b33" stroke-width="4"/>
+  <circle cx="976" cy="239" r="98" fill="url(#metal)" stroke="#050605" stroke-width="5"/>
+  <path d="m895 198-12 53 48 68 88-7 41-56-20-65" fill="none" stroke="#4b493e" stroke-width="12" stroke-linejoin="round"/>
+  <path d="m894 198-11 53 48 68" fill="none" stroke="#797360" stroke-opacity=".45" stroke-width="2"/>
+  <circle cx="906" cy="279" r="8" fill="url(#brass)" stroke="#171710" stroke-width="2"/>
+  <circle cx="1081" cy="252" r="35" fill="#10110e" stroke="url(#rim)" stroke-width="3"/>
+  <circle cx="1081" cy="252" r="27" fill="url(#metal)" stroke="#aba17c" stroke-opacity=".55" stroke-width="4" stroke-dasharray="1 5"/>
+  <path d="m1081 226-1 10" stroke="#cdc09a" stroke-width="2"/>
+  <circle cx="1081" cy="252" r="5" fill="#080907"/>
+  <path d="m1032 291 34 109" stroke="#090a08" stroke-width="10" stroke-linecap="round"/>
+  <path d="m1032 291 34 109" stroke="#716c54" stroke-width="2" stroke-linecap="round"/>
+  <rect x="1017" y="513" width="24" height="64" rx="5" fill="#090a08" stroke="#423f33" stroke-width="2"/>
+  <path d="M1007 528v18h44v-18" fill="none" stroke="#81785c" stroke-width="5" stroke-linejoin="round"/>
+
+  <!-- Platter well and warm light reflecting off its lower edge. -->
+  <circle cx="465" cy="457" r="435" fill="#000" opacity=".6"/>
+  <circle cx="465" cy="450" r="429" fill="#0c0d0b" stroke="url(#rim)" stroke-width="3"/>
+  <ellipse cx="663" cy="794" rx="137" ry="96" fill="url(#warmLight)"/>
+
+  <circle cx="75" cy="710" r="43" fill="#0c0d0a" stroke="#090a08" stroke-width="5"/>
+  <circle cx="75" cy="710" r="38" fill="url(#metal)" stroke="url(#rim)" stroke-width="3"/>
+  <circle cx="75" cy="710" r="29" fill="none" stroke="#b7a575" stroke-opacity=".4" stroke-dasharray="1 7"/>
+  <path d="m72 679 1 11" stroke="#d8c492" stroke-width="2"/>
+  <circle cx="75" cy="710" r="7" fill="#181a14" stroke="#71684c" stroke-width="1"/>
+
+  <!-- Decorative pitch fader, as on the reference turntable. -->
+  <rect x="1034" y="474" width="78" height="307" rx="6" fill="#0b0d09" stroke="#34362a" stroke-width="3"/>
+  <rect x="1068" y="490" width="31" height="272" rx="5" fill="#161812" stroke="#414235"/>
+  <rect x="1080" y="494" width="6" height="264" rx="3" fill="#030502"/>
+  <path d="M1052 501h9m-6 8h6m-6 8h6m-9 8h9m-6 8h6m-6 8h6m-9 8h9m-6 8h6m-6 8h6m-9 8h9m-6 8h6m-6 8h6m-9 8h9m-6 8h6m-6 8h6m-9 8h9m-6 8h6m-6 8h6m-9 8h9m-6 8h6m-6 8h6m-9 8h9m-6 8h6m-6 8h6m-9 8h9m-6 8h6m-6 8h6m-9 8h9m-6 8h6m-6 8h6m-9 8h9m-6 8h6m-6 8h6" fill="none" stroke="#8b855d" stroke-opacity=".65"/>
+  <rect x="1066" y="534" width="44" height="46" rx="2" fill="#000" opacity=".65" transform="translate(2 5)"/>
+  <rect x="1066" y="534" width="42" height="44" rx="2" fill="url(#slider)" stroke="#8c8d83" stroke-width="2"/>
+  <path d="M1068 547h38m-38 13h38m-38 9h38" stroke="#373a32" stroke-width="2"/>
+  <rect x="1041" y="621" width="7" height="7" rx="1" fill="#e0a345"/>
+  <g fill="#a59d71" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" opacity=".85">
+    <text x="1053" y="487">MAX</text>
+    <text x="1053" y="769">MIN</text>
+    <text x="1073" y="799" font-size="11" font-style="italic">Pitch</text>
+  </g>
+
+  <rect x="654" y="836" width="65" height="35" rx="17" fill="url(#brass)" stroke="#322d20" stroke-width="2"/>
+  <circle cx="671" cy="853" r="12" fill="url(#metal)" stroke="url(#brass)" stroke-width="3"/>
+  <circle cx="702" cy="853" r="11" fill="url(#brass)" stroke="#544b32" stroke-width="2"/>
+  <circle cx="702" cy="853" r="4" fill="#dacb96"/>
+  <text x="736" y="857" fill="#c6b783" font-family="Georgia, serif" font-size="37" font-style="italic" font-weight="bold">iEast</text>
+  <text x="736" y="879" fill="#a79c72" font-family="Arial, sans-serif" font-size="9" letter-spacing="2">DIRECT DRIVE · 33⅓ RPM</text>
+</svg>

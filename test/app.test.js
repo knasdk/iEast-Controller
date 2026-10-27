@@ -6,13 +6,17 @@ const vm = require("node:vm");
 
 function element(tagName = "div") {
   const classes = new Set();
+  const properties = new Map();
   return {
     tagName,
     value: "0",
     dataset: {},
     children: [],
     listeners: {},
-    style: { setProperty() {} },
+    style: {
+      setProperty(name, value) { properties.set(name, value); },
+      getPropertyValue(name) { return properties.get(name) || ""; },
+    },
     classList: {
       add(name) { classes.add(name); },
       remove(name) { classes.delete(name); },
@@ -47,9 +51,11 @@ function loadApp(playbackTarget = "ieast", globals = {}) {
   const audioEvents = [];
   const timers = new Set();
   const responses = new Map();
+  const storage = new Map([["ieast-playback-target", playbackTarget]]);
   const context = vm.createContext({
     document: {
       body: element(),
+      documentElement: element("html"),
       createElement: element,
       querySelector(selector) {
         if (!nodes.has(selector)) nodes.set(selector, element(selector === "#savedPlaylist" ? "select" : "div"));
@@ -91,9 +97,15 @@ function loadApp(playbackTarget = "ieast", globals = {}) {
         this.listeners.play?.();
       }
     },
-    I18n: { t: (key) => key, error: (data) => data.error },
+    I18n: { t: (key) => key, error: (data) => data.error, localeNames: { da: "Dansk" }, setLocale() {}, apply() {} },
+    localStorage: {
+      getItem(key) { return storage.get(key) ?? null; },
+      setItem(key, value) { storage.set(key, String(value)); },
+    },
+    location: { search: "", pathname: "/" },
     setTimeout(callback) { const timer = { callback }; timers.add(timer); return timer; },
     clearTimeout(timer) { timers.delete(timer); },
+    setInterval() {},
     URLSearchParams,
     TextDecoder,
     async fetch(url, options = {}) {
@@ -121,8 +133,203 @@ function loadApp(playbackTarget = "ieast", globals = {}) {
   function selections() {
     return JSON.parse(vm.runInContext("JSON.stringify([...state.selections.values()])", context));
   }
-  return { context, nodes, calls, audioEvents, timers, responses, respondWith, selections };
+  return { context, nodes, calls, audioEvents, timers, responses, storage, respondWith, selections };
 }
+
+const spotifyTracks = [
+  { type: "spotify", queueItemId: "spotify-1", uri: "spotify:track:first", title: "First Spotify track", artist: "Artist", durationMs: 180000 },
+  { type: "spotify", queueItemId: "spotify-2", uri: "spotify:track:second", title: "Current Spotify track", artist: "Artist", durationMs: 180000 },
+];
+
+function spotifyPlaybackResponses(app, status = "play") {
+  app.respondWith(spotifyTracks);
+  Object.assign(app.context.responseQueue, { index: 0, state: "playing" });
+  app.responses.set("/api/config", { language: "da", theme: "dark", mediaServers: [], radios: [] });
+  app.responses.set("/api/spotify/devices", { devices: [
+    { id: "streamer", type: "AVR", name: "iEast", active: false },
+    { id: "computer", type: "Computer", name: "This computer", active: true },
+  ] });
+  const playback = {
+    active: true, status, Title: spotifyTracks[1].title, Artist: "Artist", Album: "Album",
+    spotifyUri: spotifyTracks[1].uri, artwork: "https://example.com/current.jpg",
+    curpos: 90000, totlen: 180000, mediaType: "track", vol: 42, mute: 0,
+  };
+  app.responses.set("/api/spotify/playback?deviceId=computer", playback);
+  return playback;
+}
+
+for (const status of ["play", "pause"]) {
+  test(`reloading reconnects to ${status === "play" ? "playing" : "paused"} Spotify on the computer without restarting it`, async () => {
+    const app = loadApp("computer");
+    const playback = spotifyPlaybackResponses(app, status);
+    await vm.runInContext("initialize()", app.context);
+
+    assert.equal(vm.runInContext("state.computerSource", app.context), "spotify-connect");
+    assert.equal(vm.runInContext("state.computerSpotifyDeviceId", app.context), "computer");
+    assert.equal(vm.runInContext("state.computerQueueIndex", app.context), 1);
+    assert.equal(app.nodes.get("#title").textContent, playback.Title);
+    assert.equal(app.nodes.get("#currentTime").textContent, "1:30");
+    assert.equal(app.nodes.get("#duration").textContent, "3:00");
+    assert.equal(app.nodes.get("#cover").src, playback.artwork);
+    assert.equal(app.nodes.get("#volumeValue").textContent, 42);
+    assert.equal(app.nodes.get("#artwork").style.getPropertyValue("--tonearm-angle"), "8.25deg");
+    assert.equal(app.context.document.body.classList.contains("is-playing"), status === "play");
+    assert.equal(app.nodes.get("#queueList").children[1].classList.contains("current"), true);
+    assert.equal(app.calls.some(call => call.method && call.method !== "GET"), false, "reconnection must only read playback state");
+    assert.deepEqual(app.audioEvents, [], "reconnection must not start local audio");
+  });
+}
+
+test("a remembered Spotify computer is preferred over an unrelated active computer", async () => {
+  const app = loadApp("computer");
+  spotifyPlaybackResponses(app);
+  app.storage.set("ieast-computer-spotify-device", "computer");
+  app.responses.set("/api/spotify/devices", { devices: [
+    { id: "other-computer", type: "Computer", active: true },
+    { id: "computer", type: "Computer", active: false },
+  ] });
+  await vm.runInContext("initialize()", app.context);
+
+  assert.equal(vm.runInContext("state.computerSpotifyDeviceId", app.context), "computer");
+  assert.equal(app.calls.some(call => call.url.includes("deviceId=other-computer")), false);
+});
+
+test("Spotify playback on another device is not restored as computer playback", async () => {
+  const app = loadApp("computer");
+  spotifyPlaybackResponses(app);
+  app.responses.set("/api/spotify/playback?deviceId=computer", { active: false, reason: "other-device" });
+  await vm.runInContext("initialize()", app.context);
+
+  assert.equal(vm.runInContext("state.computerSource", app.context), null);
+  assert.equal(app.context.document.body.classList.contains("is-playing"), false);
+  assert.equal(app.calls.some(call => call.method && call.method !== "GET"), false);
+});
+
+test("a failed initial Spotify lookup is retried on the next status refresh", async () => {
+  const app = loadApp("computer");
+  spotifyPlaybackResponses(app);
+  app.context.fetchHandler = async (url) => {
+    if (url === "/api/spotify/devices") throw new Error("Temporary Spotify failure");
+    return { ok: true, async json() { return app.context.responseQueue; } };
+  };
+  await vm.runInContext("refreshStatus()", app.context);
+  delete app.context.fetchHandler;
+  await vm.runInContext("refreshStatus()", app.context);
+
+  assert.equal(vm.runInContext("state.computerSource", app.context), "spotify-connect");
+  assert.equal(app.nodes.get("#title").textContent, spotifyTracks[1].title);
+});
+
+test("Spotify restoration cannot overwrite a newer local playback request", async () => {
+  const app = loadApp("computer");
+  app.respondWith(dlnaTracks);
+  vm.runInContext("renderQueue(responseQueue)", app.context);
+  let releaseDevices;
+  let devicesStarted;
+  const pendingDevices = new Promise(resolve => { releaseDevices = resolve; });
+  const requestingDevices = new Promise(resolve => { devicesStarted = resolve; });
+  app.context.fetchHandler = async (url) => {
+    if (url === "/api/spotify/devices") { devicesStarted(); return pendingDevices; }
+    return { ok: true, async json() { return app.context.responseQueue; } };
+  };
+  const refresh = vm.runInContext("refreshStatus()", app.context);
+  await requestingDevices;
+  await vm.runInContext("playComputerQueueIndex(0)", app.context);
+  releaseDevices({ ok: true, async json() { return { devices: [{ id: "computer", type: "Computer", active: true }] }; } });
+  await refresh;
+
+  assert.equal(vm.runInContext("state.computerSource", app.context), "audio");
+  assert.equal(app.nodes.get("#title").textContent, dlnaTracks[0].title);
+  assert.equal(app.calls.some(call => call.url.startsWith("/api/spotify/playback")), false);
+});
+
+test("a delayed Spotify restoration response is ignored after switching to iEast", async () => {
+  const app = loadApp("computer");
+  const playback = spotifyPlaybackResponses(app);
+  let releasePlayback;
+  let playbackStarted;
+  const pendingPlayback = new Promise(resolve => { releasePlayback = resolve; });
+  const requestingPlayback = new Promise(resolve => { playbackStarted = resolve; });
+  app.context.fetchHandler = async (url) => {
+    if (url.startsWith("/api/spotify/playback")) { playbackStarted(); return pendingPlayback; }
+    return { ok: true, async json() { return app.responses.get(url) || app.context.responseQueue; } };
+  };
+  const refresh = vm.runInContext("refreshStatus()", app.context);
+  await requestingPlayback;
+  await changePlaybackTarget(app, "ieast");
+  vm.runInContext('renderStatus({ status: "play", Title: "Current iEast track" })', app.context);
+  releasePlayback({ ok: true, async json() { return playback; } });
+  await refresh;
+
+  assert.equal(vm.runInContext("state.playbackTarget", app.context), "ieast");
+  assert.equal(vm.runInContext("state.computerSource", app.context), null);
+  assert.equal(app.nodes.get("#title").textContent, "Current iEast track");
+});
+
+test("Spotify tracks outside the saved queue are restored without claiming a queue item", async () => {
+  const app = loadApp("computer");
+  const playback = spotifyPlaybackResponses(app);
+  playback.spotifyUri = "spotify:track:external";
+  await vm.runInContext("initialize()", app.context);
+  await vm.runInContext("refreshStatus()", app.context);
+
+  assert.equal(app.nodes.get("#title").textContent, playback.Title);
+  assert.equal(vm.runInContext("state.computerQueueIndex", app.context), -1);
+  assert.equal(vm.runInContext("state.computerQueueItemId", app.context), "");
+  assert.equal(app.calls.some(call => call.method && call.method !== "GET"), false);
+});
+
+test("moving Spotify playback to another device clears stale computer playback", async () => {
+  const app = loadApp("computer");
+  spotifyPlaybackResponses(app);
+  await vm.runInContext("initialize()", app.context);
+  app.responses.set("/api/spotify/playback?deviceId=computer", { active: false, reason: "other-device" });
+  await vm.runInContext("refreshStatus()", app.context);
+
+  assert.equal(vm.runInContext("state.computerSource", app.context), null);
+  assert.equal(vm.runInContext("state.computerQueueIndex", app.context), -1);
+  assert.equal(app.context.document.body.classList.contains("is-playing"), false);
+  assert.equal(app.nodes.get("#artwork").style.getPropertyValue("--tonearm-angle"), "-24deg");
+});
+
+test("an existing Spotify connection follows the live track in the queue", async () => {
+  const app = loadApp("computer");
+  spotifyPlaybackResponses(app);
+  vm.runInContext(`
+    state.computerSource = "spotify-connect";
+    state.computerSpotifyDeviceId = "computer";
+    state.computerQueueIndex = 0;
+    state.computerQueueItemId = "spotify-1";
+    state.queue = responseQueue;
+  `, app.context);
+  await vm.runInContext("refreshStatus()", app.context);
+
+  assert.equal(vm.runInContext("state.computerQueueIndex", app.context), 1);
+  assert.equal(vm.runInContext("state.computerQueueItemId", app.context), "spotify-2");
+  assert.equal(app.nodes.get("#queueList").children[1].classList.contains("current"), true);
+});
+
+test("iEast playback is rendered immediately without waiting for tone controls", async () => {
+  const app = loadApp();
+  app.respondWith(dlnaTracks);
+  vm.runInContext("state.deviceLoaded = true", app.context);
+  let releaseTone;
+  let toneStarted;
+  const pendingTone = new Promise(resolve => { releaseTone = resolve; });
+  const requestingTone = new Promise(resolve => { toneStarted = resolve; });
+  app.context.fetchHandler = async (url) => {
+    if (url === "/api/tone") { toneStarted(); return pendingTone; }
+    return { ok: true, async json() { return url === "/api/status" ? { status: "play", Title: "Current iEast track", curpos: 90000, totlen: 180000 } : app.context.responseQueue; } };
+  };
+  const refresh = vm.runInContext("refreshStatus()", app.context);
+  await requestingTone;
+  const title = app.nodes.get("#title")?.textContent;
+  const angle = app.nodes.get("#artwork")?.style.getPropertyValue("--tonearm-angle");
+  releaseTone({ ok: true, async json() { return { bass: 0, treble: 0 }; } });
+  await refresh;
+  assert.equal(title, "Current iEast track");
+  assert.equal(angle, "8.25deg");
+});
 
 test("track durations consistently format milliseconds and legacy DLNA times", () => {
   const app = loadApp();
@@ -232,6 +439,57 @@ test("computer playback uses track metadata until audio duration is available", 
   assert.equal(app.nodes.get("#duration").textContent, "3:00");
   vm.runInContext("computerAudio.duration = 222.5; renderStatus(computerAudioStatus())", app.context);
   assert.equal(app.nodes.get("#duration").textContent, "3:42");
+});
+
+test("the tonearm follows the track from the outer groove to the run-out", () => {
+  const app = loadApp();
+  for (const [position, angle] of [[0, "-1.5deg"], [90000, "8.25deg"], [180000, "18deg"], [240000, "18deg"], [-1000, "-1.5deg"]]) {
+    vm.runInContext(`renderStatus({ status: "play", curpos: ${position}, totlen: 180000 })`, app.context);
+    assert.equal(app.nodes.get("#artwork").style.getPropertyValue("--tonearm-angle"), angle);
+    assert.equal(app.nodes.get("#artwork").classList.contains("has-playback"), true);
+    assert.equal(app.context.document.body.classList.contains("is-playing"), true);
+  }
+});
+
+test("pausing keeps the needle on the record and stopping parks the arm", () => {
+  const app = loadApp();
+  vm.runInContext('renderStatus({ status: "play", curpos: 90000, totlen: 180000 })', app.context);
+  vm.runInContext('renderStatus({ status: "pause", curpos: 90000, totlen: 180000 })', app.context);
+  assert.equal(app.nodes.get("#artwork").style.getPropertyValue("--tonearm-angle"), "8.25deg");
+  assert.equal(app.nodes.get("#artwork").classList.contains("has-playback"), true);
+  assert.equal(app.context.document.body.classList.contains("is-playing"), false);
+
+  vm.runInContext('renderStatus({ status: "stop", curpos: 90000, totlen: 180000 })', app.context);
+  assert.equal(app.nodes.get("#artwork").style.getPropertyValue("--tonearm-angle"), "-24deg");
+  assert.equal(app.nodes.get("#artwork").classList.contains("has-playback"), false);
+  assert.equal(app.context.document.body.classList.contains("is-playing"), false);
+});
+
+test("radio and tracks with unknown duration keep the needle at the outer groove", () => {
+  const app = loadApp();
+  vm.runInContext('renderStatus({ status: "play", mediaType: "radio", curpos: 90000, totlen: 180000 })', app.context);
+  assert.equal(app.nodes.get("#artwork").style.getPropertyValue("--tonearm-angle"), "-1.5deg");
+  vm.runInContext('renderStatus({ status: "play", curpos: 90000 })', app.context);
+  assert.equal(app.nodes.get("#artwork").style.getPropertyValue("--tonearm-angle"), "-1.5deg");
+});
+
+test("seeking previews the needle position without a status refresh moving it back", () => {
+  const app = loadApp();
+  vm.runInContext('renderStatus({ status: "play", curpos: 0, totlen: 180000 })', app.context);
+  const seek = app.nodes.get("#seek");
+  seek.value = "90000";
+  seek.listeners.input({ target: seek });
+  assert.equal(app.nodes.get("#artwork").style.getPropertyValue("--tonearm-angle"), "8.25deg");
+  vm.runInContext('renderStatus({ status: "play", curpos: 1000, totlen: 180000 })', app.context);
+  assert.equal(app.nodes.get("#artwork").style.getPropertyValue("--tonearm-angle"), "8.25deg");
+});
+
+test("changing computer playback source stops the record and parks the arm", () => {
+  const app = loadApp("computer");
+  vm.runInContext('renderStatus({ status: "play", curpos: 90000, totlen: 180000 }); clearComputerTrackHighlight()', app.context);
+  assert.equal(app.nodes.get("#artwork").style.getPropertyValue("--tonearm-angle"), "-24deg");
+  assert.equal(app.nodes.get("#artwork").classList.contains("has-playback"), false);
+  assert.equal(app.context.document.body.classList.contains("is-playing"), false);
 });
 
 for (const target of ["ieast", "computer"]) {

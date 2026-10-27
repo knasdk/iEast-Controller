@@ -53,23 +53,25 @@ button:disabled { cursor: wait; opacity: .55; }
 :root[data-theme="light"] .theme-icon-light { display: none; }
 :root[data-theme="light"] .theme-icon-dark { display: block; }
 
-.hero { display: grid; grid-template-columns: minmax(300px, .92fr) minmax(420px, 1.08fr); gap: clamp(48px, 8vw, 110px); align-items: center; padding: clamp(50px, 8vw, 94px) clamp(8px, 4vw, 44px); }
+.hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(340px, .85fr); gap: clamp(28px, 4vw, 56px); align-items: center; padding: clamp(40px, 6vw, 72px) clamp(0px, 2vw, 24px); }
 .player { min-width: 0; }
-.artwork { position: relative; aspect-ratio: 1; border: 1px solid rgba(255,255,255,.09); border-radius: 18px; display: grid; place-items: center; overflow: hidden; background: linear-gradient(145deg, #302f2a, #181714 70%); box-shadow: 0 28px 70px rgba(0,0,0,.33), inset 0 1px rgba(255,255,255,.07); }
-.artwork::before { position: absolute; inset: 7%; border: 1px solid rgba(255,255,255,.045); border-radius: 13px; background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.055), transparent 33%); content: ""; }
-.record { position: relative; z-index: 1; width: 72%; aspect-ratio: 1; border: 2px solid #090908; border-radius: 50%; display: grid; place-items: center; background: repeating-radial-gradient(circle, #171715 0 3px, #282824 4px 5px, #10100f 6px 9px); box-shadow: 0 20px 38px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.08); animation: spin 12s linear infinite; animation-play-state: paused; }
+.artwork { position: relative; isolation: isolate; aspect-ratio: 1200 / 904; border: 1px solid rgba(255,255,255,.12); border-radius: 12px; overflow: hidden; background: #201e19; box-shadow: 0 24px 56px rgba(0,0,0,.35); }
+.turntable-base { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+/* Coordinates match the 1200 × 904 deck: record (465, 450), arm pivot (976, 239). */
+.record { position: absolute; z-index: 1; left: 3.416667%; top: 2.876106%; width: 70.666667%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; background: url("/turntable-vinyl.svg") center / contain no-repeat; animation: spin 1.8s linear infinite; animation-play-state: paused; }
 .is-playing .record { animation-play-state: running; }
-.record::before { position: absolute; inset: 8%; border: 1px solid rgba(255,255,255,.065); border-radius: 50%; box-shadow: inset 0 0 0 10px rgba(0,0,0,.06); content: ""; }
-.artwork #cover { position: absolute; z-index: 2; width: 56%; aspect-ratio: 1; padding: 2%; border: 4px solid #11110f; border-radius: 50%; background: #171613; object-fit: contain; opacity: 0; transition: opacity .35s ease; }
+.record-sheen { position: absolute; z-index: 2; left: 5.916667%; top: 6.19469%; width: 65.666667%; aspect-ratio: 1; border-radius: 50%; background: conic-gradient(from -35deg, transparent 0deg, rgba(220,227,213,.14) 32deg, transparent 63deg, transparent 175deg, rgba(220,227,213,.12) 213deg, transparent 250deg); mask-image: radial-gradient(circle, transparent 0 35%, #000 43%); pointer-events: none; }
+.artwork #cover { position: absolute; z-index: 2; width: 44%; aspect-ratio: 1; border: 1px solid #b8ad8e; border-radius: 50%; background: #171613; object-fit: cover; opacity: 0; transition: opacity .35s ease; }
 .artwork.has-cover #cover { opacity: 1; }
-.record-ring { position: absolute; z-index: 3; width: 8%; aspect-ratio: 1; border: 3px solid rgba(255,255,255,.58); border-radius: 50%; background: #12110f; box-shadow: 0 1px 5px rgba(0,0,0,.7); }
-.record-label { z-index: 1; color: #111; font: 700 clamp(13px, 2vw, 24px) "Manrope"; letter-spacing: -.08em; }
+.record-ring { position: absolute; z-index: 3; width: 2.2%; aspect-ratio: 1; border: 1px solid #363b32; border-radius: 50%; background: radial-gradient(circle at 32% 25%, #f0f0e7, #888d80 35%, #252a20 70%); box-shadow: 0 1px 3px #000; }
+.record-label { position: absolute; z-index: 1; width: 28%; aspect-ratio: 1; border: 1px solid #dcc49b; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20%; background: repeating-radial-gradient(circle, transparent 0 19%, rgba(67,30,8,.22) 19.5% 20%, transparent 20.5% 29%), #d74718; color: #291b0d; }
+.record-label b { font: italic 700 clamp(13px, 2vw, 27px) "Georgia", serif; letter-spacing: -.06em; }
+.record-label small { font: 700 clamp(4px, .6vw, 7px) "DM Sans", sans-serif; letter-spacing: .13em; }
 .artwork.has-cover .record-label { opacity: 0; }
-.tonearm { position: absolute; z-index: 2; top: 13%; right: 10%; width: 34%; height: 60%; filter: drop-shadow(0 4px 5px rgba(0,0,0,.45)); transform: rotate(var(--tonearm-angle, -18deg)); transform-origin: 88% 8%; transition: transform 2s linear; }
-.tonearm svg { width: 100%; height: 100%; overflow: visible; }
-.tonearm path { fill: none; stroke: #aaa59b; stroke-width: 2.6; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.tonearm::before { position: absolute; top: -4%; right: -2%; width: 22%; aspect-ratio: 1; border: 3px solid #aaa49a; border-radius: 50%; background: #24221e; box-shadow: 0 3px 8px rgba(0,0,0,.5); content: ""; }
-.tonearm::after { position: absolute; bottom: 3%; left: 2%; width: 14%; height: 8%; border-radius: 3px 3px 7px 7px; background: #b4aea3; content: ""; transform: rotate(-12deg); }
+.turntable-light { position: absolute; z-index: 3; left: 4%; top: 65%; width: 13%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, rgba(255,48,14,.55), rgba(237,49,17,.12) 35%, transparent 65%); opacity: .12; transition: opacity .8s ease; pointer-events: none; }
+.artwork.has-playback .turntable-light { opacity: 1; }
+.tonearm { position: absolute; z-index: 4; inset: 0; transform: rotate(var(--tonearm-angle, -24deg)); transform-origin: 81.333333% 26.438053%; transition: transform .8s ease-in-out; filter: drop-shadow(2px 4px 3px rgba(0,0,0,.65)); pointer-events: none; }
+.tonearm img { display: block; width: 100%; height: 100%; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .eyebrow { margin: 0 0 12px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .15em; }
 h1 { margin: 0; font: 700 clamp(38px, 5vw, 64px)/1.03 "Manrope", sans-serif; letter-spacing: -.055em; overflow-wrap: anywhere; text-wrap: balance; }
@@ -272,14 +274,14 @@ dl { margin: 24px 0 0; }dl div { display: flex; justify-content: space-between; 
 :root[data-theme="light"] .radio-setting-row:nth-child(even) { background: #ece7dc; border-color: rgba(42,37,27,.09); }
 
 @media (max-width: 850px) {
-  .hero { grid-template-columns: minmax(220px, .8fr) 1.2fr; gap: 40px; padding-inline: 0; }
+  .hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; padding-inline: 0; }
   .lower-grid, .stream-card, .radio-heading { grid-template-columns: 1fr; }
   .library-top { align-items: stretch; flex-direction: column; gap: 20px; }.library-controls { width: 100%; }
 }
 @media (max-width: 620px) {
   .shell { width: min(100% - 28px, 500px); padding-top: 20px; }
-  .topbar { padding-bottom: 20px; }.top-actions { gap: 8px; }.playback-target > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }.playback-target select { max-width: 132px; }.connection { font-size: 0; }.connection #connectionText::after { content: var(--i18n-status); font-size: 12px; }
-  .hero { display: block; padding: 36px 4px 46px; }.artwork { width: min(74vw, 330px); margin: 0 auto 38px; }
+  .topbar { padding-bottom: 20px; flex-wrap: wrap; row-gap: 12px; }.top-actions { gap: 8px; margin-left: auto; }.playback-target > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }.playback-target select { max-width: 132px; }.connection { font-size: 0; }.connection #connectionText::after { content: var(--i18n-status); font-size: 12px; }
+  .hero { display: block; padding: 36px 4px 46px; }.artwork { width: 100%; max-width: 500px; margin: 0 auto 32px; }
   h1 { font-size: 40px; }.artist { margin-bottom: 5px; font-size: 16px; }.now-album { justify-content: center; }.player { text-align: center; }.times, .volume-row, .tone-controls { text-align: left; }
   .queue-card { padding: 22px 18px; }.queue-heading, .saved-playlists-heading { align-items: start; flex-direction: column; gap: 5px; }.queue-options { display: grid; }.saved-playlists { padding: 17px 14px; }.playlist-controls select, .selection-toolbar input[type="text"] { width: 100%; }.selection-toolbar span { width: 100%; }
   .queue-list li { min-width: 0; grid-template-columns: 36px 20px minmax(0,1fr) 48px; gap: 3px 8px; }.queue-cover { grid-column: 1; grid-row: 1 / 4; }.queue-number { grid-column: 2; grid-row: 1 / 4; }.queue-list li > strong { grid-column: 3; grid-row: 1; }.queue-item-artist { grid-column: 3; grid-row: 2; }.queue-item-album { grid-column: 3; grid-row: 3; }.queue-duration { grid-column: 4; grid-row: 3; }.queue-play { grid-column: 4; grid-row: 1 / 3; justify-self: end; }
@@ -291,4 +293,4 @@ dl { margin: 24px 0 0; }dl div { display: flex; justify-content: space-between; 
   .device-card { padding: 24px; }
   .settings-dialog form, .spotify-help-content { padding: 24px 18px; }.server-setting-row { grid-template-columns: 1fr 28px; }.server-setting-row .server-url { grid-column: 1; }.server-setting-row .remove-button { grid-column: 2; grid-row: 1 / 3; }.radio-setting-row { grid-template-columns: 1fr 28px; }.radio-setting-row .radio-setting-name, .radio-setting-row .radio-setting-url, .radio-setting-row .radio-setting-artwork { grid-column: 1; }.radio-setting-row .remove-button { grid-column: 2; grid-row: 1 / 4; }
 }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }.record { animation: none; }.tonearm { transition: none; } }
