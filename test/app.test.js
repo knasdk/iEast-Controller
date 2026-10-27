@@ -124,6 +124,116 @@ function loadApp(playbackTarget = "ieast", globals = {}) {
   return { context, nodes, calls, audioEvents, timers, responses, respondWith, selections };
 }
 
+test("track durations consistently format milliseconds and legacy DLNA times", () => {
+  const app = loadApp();
+  for (const [item, expected] of [
+    [{ durationMs: 222500 }, "3:42"],
+    [{ durationMs: 3723250 }, "1:02:03"],
+    [{ durationMs: 222500, duration: "0:04:00" }, "3:42"],
+    [{ duration: "0:03:42.500" }, "3:42"],
+    [{ duration: "03:42" }, "3:42"],
+    [{ duration: "1:02:03.250" }, "1:02:03"],
+    [{ durationMs: 0, duration: "0:03:42" }, "3:42"],
+    [{ durationMs: -1, duration: "0:03:42" }, "3:42"],
+    [{}, "–"],
+    [{ durationMs: 0 }, "–"],
+    [{ durationMs: -1 }, "–"],
+    [{ durationMs: Infinity }, "–"],
+    [{ durationMs: "invalid" }, "–"],
+    [{ duration: "NOT_IMPLEMENTED" }, "–"],
+    [{ duration: "0:00:00" }, "–"],
+  ]) {
+    app.context.durationItem = item;
+    assert.equal(vm.runInContext("formatTrackDuration(durationItem)", app.context), expected, JSON.stringify(item));
+  }
+});
+
+for (const renderer of ["renderSearchResults(tracks)", "renderBrowseEntries([], tracks)"]) {
+  test(`${renderer} displays known and unknown DLNA track durations`, () => {
+    const app = loadApp();
+    app.context.tracks = [
+      { ...dlnaTracks[0], duration: "0:03:42.500" },
+      { ...dlnaTracks[1], duration: undefined, durationMs: 180000 },
+      { title: "Unknown duration" },
+    ];
+    vm.runInContext(renderer, app.context);
+    assert.deepEqual(app.nodes.get("#searchResults").children.map((row) => row.children[3].textContent), ["3:42", "3:00", "–"]);
+  });
+}
+
+test("Spotify search and album tracks display durations without replacing other result types", () => {
+  const app = loadApp();
+  app.context.tracks = [
+    { type: "track", uri: "spotify:track:1", title: "Search track", durationMs: 222500 },
+    { type: "track", uri: "spotify:track:2", title: "Album track", track: 2, durationMs: 3723250 },
+    { type: "track", uri: "spotify:track:3", title: "Unknown duration" },
+    { type: "album", uri: "spotify:album:1", title: "Album" },
+    { type: "artist", uri: "spotify:artist:1", title: "Artist" },
+    { type: "playlist", uri: "spotify:playlist:1", title: "Playlist" },
+  ];
+  vm.runInContext("renderSpotifyResults(tracks)", app.context);
+  const metadata = app.nodes.get("#searchResults").children.map((row) => row.children[3]);
+  assert.deepEqual(metadata.map((node) => node.textContent), ["3:42", "1:02:03", "–", "spotify.type.album", "spotify.type.artist", "spotify.type.playlist"]);
+  assert.equal(metadata[0].className, "track-duration result-duration");
+  assert.equal(metadata[3].className, "spotify-type");
+  assert.equal(vm.runInContext("spotifyTrackQueueEntry(tracks[0]).track.durationMs", app.context), 222500);
+});
+
+test("the queue shows durations for DLNA and Spotify tracks", () => {
+  const app = loadApp();
+  app.respondWith([
+    dlnaTracks[0],
+    { type: "spotify", uri: "spotify:track:1", title: "Spotify track", durationMs: 222500 },
+    { title: "Unknown duration" },
+  ]);
+  vm.runInContext("renderQueue(responseQueue)", app.context);
+  assert.deepEqual(app.nodes.get("#queueList").children.map((row) => row.children[5].textContent), ["3:00", "3:42", "–"]);
+});
+
+test("saved playlists show individual track durations but do not invent album durations", () => {
+  const app = loadApp();
+  app.respondWith([], [{
+    id: "mixed", name: "Mixed", entries: [
+      { type: "track", track: dlnaTracks[0] },
+      { type: "spotifyTrack", track: { title: "Spotify track", durationMs: 222500 } },
+      { type: "track", title: "Legacy track", duration: "1:02:03" },
+      { type: "spotifyTrack", track: { title: "Unknown duration" } },
+      { type: "album", album: "Local album" },
+      { type: "spotifyAlbum", album: "Spotify album" },
+    ],
+  }]);
+  vm.runInContext("renderQueue(responseQueue)", app.context);
+  assert.deepEqual(app.nodes.get("#playlistContents").children.map((row) => row.children[3].textContent), ["3:00", "3:42", "1:02:03", "–", "", ""]);
+});
+
+test("the player uses known track durations when the device has not reported a length", () => {
+  const app = loadApp();
+  vm.runInContext('renderStatus({ Title: "Track", durationMs: 222500 })', app.context);
+  assert.equal(app.nodes.get("#duration").textContent, "3:42");
+  assert.equal(app.nodes.get("#seek").disabled, false);
+  vm.runInContext('renderStatus({ Title: "Track", totlen: 240000, durationMs: 222500 })', app.context);
+  assert.equal(app.nodes.get("#duration").textContent, "4:00", "live player duration takes precedence");
+  vm.runInContext('renderStatus({ Title: "Radio", mediaType: "radio" })', app.context);
+  assert.equal(app.nodes.get("#duration").textContent, "–");
+  assert.equal(app.nodes.get("#seek").disabled, true);
+  vm.runInContext('renderStatus({ Title: "Unknown duration" })', app.context);
+  assert.equal(app.nodes.get("#duration").textContent, "–");
+});
+
+test("computer playback uses track metadata until audio duration is available", () => {
+  const app = loadApp("computer");
+  app.respondWith(dlnaTracks);
+  vm.runInContext(`
+    renderQueue(responseQueue);
+    state.computerQueueIndex = 0;
+    computerAudio.duration = NaN;
+    renderStatus(computerAudioStatus());
+  `, app.context);
+  assert.equal(app.nodes.get("#duration").textContent, "3:00");
+  vm.runInContext("computerAudio.duration = 222.5; renderStatus(computerAudioStatus())", app.context);
+  assert.equal(app.nodes.get("#duration").textContent, "3:42");
+});
+
 for (const target of ["ieast", "computer"]) {
   test(`saving an exact album search uses that album on ${target}`, async () => {
     const app = loadApp(target);

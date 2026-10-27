@@ -462,6 +462,7 @@ function spotifySearchResults(data) {
     ...(data.tracks?.items || []).map((item) => ({
       type: "track", uri: item.uri, title: item.name, subtitle: item.artists.map((artist) => artist.name).join(", "),
       detail: item.album.name, albumUri: item.album.uri, artwork: image(item.album.images),
+      durationMs: item.duration_ms,
     })),
     ...(data.albums?.items || []).map((item) => ({
       type: "album", uri: item.uri, title: item.name, subtitle: item.artists.map((artist) => artist.name).join(", "),
@@ -979,7 +980,7 @@ async function playQueueIndex(index, deviceId) {
   queueStore.queue.state = "playing";
   saveDirectPlayback({
     Title: item.title, Artist: item.artist, Album: item.album, artwork: item.artwork,
-    mediaType: "track", serverId: item.serverId, parentId: item.parentId,
+    mediaType: "track", durationMs: item.durationMs, serverId: item.serverId, parentId: item.parentId,
     folderTitle: item.album, queueItemId: item.queueItemId, deviceStatusAtStart, startedAt: Date.now(),
   });
   queueRuntime = {

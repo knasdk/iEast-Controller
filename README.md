@@ -8,6 +8,7 @@ The application has a dependency-free Node.js server with a responsive frontend.
 
 - Control playback, volume, mute, bass, treble, seeking, and track navigation
 - Display current track metadata and artwork
+- Show track durations in the player, queue, saved playlists, and DLNA/Spotify results, including on mobile
 - Search and browse one or more DLNA/UPnP media servers
 - Play complete albums sequentially or shuffled, with optional continuation to the next album folder
 - Build a persistent queue and save named playlists containing individual tracks or complete albums

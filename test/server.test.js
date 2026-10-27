@@ -262,6 +262,18 @@ test("spotifySearchResults leaves presentation labels to the translated client",
   assert.equal(results[2].detail, "");
 });
 
+test("Spotify search preserves track durations for results, queues, and saved playlists", () => {
+  const [result] = spotifySearchResults({
+    tracks: { items: [{
+      uri: "spotify:track:abc123", name: "Track", duration_ms: 222500,
+      artists: [{ name: "Artist" }], album: { name: "Album", uri: "spotify:album:abc123", images: [] },
+    }] },
+  });
+
+  assert.equal(result.durationMs, 222500);
+  assert.equal(spotifyQueueTrack(result).durationMs, 222500);
+});
+
 test("spotifyPlayerStatus ignores playback on another device", () => {
   const playback = {
     is_playing: true,

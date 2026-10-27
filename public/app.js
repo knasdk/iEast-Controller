@@ -87,8 +87,24 @@ function applyTheme(value) {
 }
 
 function formatTime(milliseconds) {
-  const seconds = Math.max(0, Math.floor(Number(milliseconds || 0) / 1000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  const value = Number(milliseconds);
+  const seconds = Number.isFinite(value) ? Math.max(0, Math.floor(value / 1000)) : 0;
+  const minutes = Math.floor(seconds / 60);
+  const time = `${minutes % 60}:${String(seconds % 60).padStart(2, "0")}`;
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}:${time.padStart(5, "0")}` : time;
+}
+
+function trackDurationMilliseconds(item) {
+  const milliseconds = Number(item?.durationMs);
+  if (Number.isFinite(milliseconds) && milliseconds > 0) return milliseconds;
+  const duration = String(item?.duration || "").trim();
+  if (!/^\d+:\d{1,2}(?::\d{1,2})?(?:\.\d+)?$/.test(duration)) return 0;
+  return duration.split(":").reduce((seconds, part) => seconds * 60 + Number(part), 0) * 1000;
+}
+
+function formatTrackDuration(item) {
+  const milliseconds = trackDurationMilliseconds(item);
+  return milliseconds > 0 ? formatTime(milliseconds) : "–";
 }
 
 function decodeMetadata(value) {
@@ -221,6 +237,9 @@ function spotifyDevice() {
 
 function computerAudioStatus() {
   const item = state.computerQueueIndex >= 0 ? state.queue?.items[state.computerQueueIndex] : state.computerStatus;
+  const duration = Number.isFinite(computerAudio.duration) && computerAudio.duration > 0
+    ? computerAudio.duration * 1000
+    : trackDurationMilliseconds(item);
   return {
     status: computerAudio.paused ? "pause" : "play",
     Title: item?.title || "",
@@ -230,9 +249,9 @@ function computerAudioStatus() {
     serverId: item?.serverId || "",
     parentId: item?.parentId || "",
     radioId: item?.radioId || item?.id || "",
-    mediaType: item?.mediaType || (Number.isFinite(computerAudio.duration) ? "track" : "radio"),
+    mediaType: item?.mediaType || (duration > 0 ? "track" : "radio"),
     curpos: Number.isFinite(computerAudio.currentTime) ? computerAudio.currentTime * 1000 : 0,
-    totlen: Number.isFinite(computerAudio.duration) ? computerAudio.duration * 1000 : 0,
+    totlen: duration,
     vol: Math.round(computerAudio.volume * 100),
     mute: computerAudio.muted ? 1 : 0,
   };
@@ -410,10 +429,14 @@ function renderQueue(data, selectionEntries = null) {
     const displayTitle = item.titleMissing || item.title === "Ukendt titel" ? t("common.unknownTitle") : item.title;
     title.textContent = displayTitle;
     const artist = document.createElement("span");
+    artist.className = "queue-item-artist";
     artist.textContent = item.artist || t("common.unknownArtist");
     const album = document.createElement("span");
     album.className = "queue-item-album";
     album.textContent = item.album || t("common.unknownAlbum");
+    const duration = document.createElement("span");
+    duration.className = "track-duration queue-duration";
+    duration.textContent = formatTrackDuration(item);
     const play = document.createElement("button");
     play.className = "queue-play";
     play.type = "button";
@@ -456,7 +479,7 @@ function renderQueue(data, selectionEntries = null) {
         play.disabled = false;
       }
     });
-    row.append(cover, number, title, artist, album, play);
+    row.append(cover, number, title, artist, album, duration, play);
     return row;
   }));
   const currentItem = data.items[data.index];
@@ -526,7 +549,10 @@ function renderPlaylistContents() {
       ? t("playlists.wholeAlbum")
       : [entry.track?.artist || entry.artist, entry.track?.album || entry.album].filter(Boolean).join(" · ");
     details.append(title, subtitle);
-    row.append(number, type, details);
+    const duration = document.createElement("span");
+    duration.className = "track-duration playlist-duration";
+    duration.textContent = ["album", "spotifyAlbum"].includes(entry.type) ? "" : formatTrackDuration(entry.track || entry);
+    row.append(number, type, details, duration);
     return row;
   }));
 }
@@ -857,7 +883,10 @@ function renderStatus(data) {
   else if (hasTitle) updateArtwork(rawTitle, rawArtist, data.artwork);
   $("#source").textContent = t(data.status === "stop" ? "player.streamer" : "player.nowPlaying");
 
-  const duration = Number(data.totlen) || 0;
+  const reportedDuration = Number(data.totlen);
+  const duration = Number.isFinite(reportedDuration) && reportedDuration > 0
+    ? reportedDuration
+    : trackDurationMilliseconds(data);
   const isRadio = data.mediaType === "radio" || !duration;
   const position = isRadio ? 0 : Math.min(Number(data.curpos) || 0, duration);
   const tonearmProgress = isRadio ? 0 : Math.min(1, position / duration);
@@ -868,7 +897,7 @@ function renderStatus(data) {
     setRange($("#seek"), position, duration || 1);
     $("#currentTime").textContent = formatTime(position);
   }
-  $("#duration").textContent = formatTime(duration);
+  $("#duration").textContent = isRadio ? "–" : formatTime(duration);
 
   if (!state.volumeChanging) {
     const volume = Math.min(100, Math.max(0, Number(data.vol) || 0));
@@ -1318,8 +1347,8 @@ function createTrackRow(item) {
     if (albumEnabled) album.addEventListener("click", () => loadAlbum(item.album));
     albumCell.append(album);
     const duration = document.createElement("span");
-    duration.className = "result-duration";
-    duration.textContent = item.duration.replace(/^0:/, "");
+    duration.className = "track-duration result-duration";
+    duration.textContent = formatTrackDuration(item);
 
     const play = document.createElement("button");
     play.className = "result-play";
@@ -1605,9 +1634,9 @@ function renderSpotifyResults(items, albumEntry = null) {
     const subtitle = document.createElement("span");
     subtitle.textContent = item.subtitle || t(`spotify.type.${item.type}`) || "";
     details.append(titleLine, subtitle);
-    const type = document.createElement("span");
-    type.className = "spotify-type";
-    type.textContent = t(`spotify.type.${item.type}`) || item.type;
+    const metadata = document.createElement("span");
+    metadata.className = item.type === "track" ? "track-duration result-duration" : "spotify-type";
+    metadata.textContent = item.type === "track" ? formatTrackDuration(item) : t(`spotify.type.${item.type}`) || item.type;
     const albumCell = document.createElement("div");
     albumCell.className = "album-cell";
     if (item.type === "track" && item.albumUri) {
@@ -1689,7 +1718,7 @@ function renderSpotifyResults(items, albumEntry = null) {
         play.disabled = false;
       }
     });
-    row.append(cover, details, albumCell, type, play);
+    row.append(cover, details, albumCell, metadata, play);
     return row;
   }));
   updateTrackHighlights();
